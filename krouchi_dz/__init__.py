@@ -39,7 +39,7 @@ from .providers import (
 )
 from .secrets import SecretsStore
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 
 __all__ = [
     "ApprovalBroker",

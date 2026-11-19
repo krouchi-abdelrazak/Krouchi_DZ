@@ -10,6 +10,17 @@
 البيانات داخل مجلد البيانات، ويُجدَّد من نافذة «ربط الهاتف»).
 المفقود أو الخاطئ = 401 JSON.
 
+قشرة تطبيق الويب (PWA): يخدم الخادم أيضاً ملفات مجلد «pwa» الثابتة
+بلا رمز (القشرة عامة كملف APK نفسه؛ الحماية على /api/* فقط)، فيفتح
+متصفح الهاتف http://<عنوان الحاسوب>:8765/ على التطبيق مباشرة،
+وتعمل محادثة «الحاسوب» فيه بنفس الأصل فلا حاجب محتوى مختلطاً:
+- GET /            → index.html
+- GET /<file>      → ملف من القائمة البيضاء PWA_FILES
+- GET /app/<file>  → الشكل الثاني لنفس الملفات
+أي مسار آخر = 404، والخدمة بقائمة بيضاء بأسماء الأساس فقط فلا عبور
+للمسارات. مكان المجلد يُحدَّد بـ find_pwa_dir()؛ وغيابه لا يعطّل
+واجهة /api/* إطلاقاً — تُعطَّل القشرة وحدها مع ملاحظة عند بدء الخادم.
+
 النقاط (JSON داخلاً وخارجاً):
 - GET  /api/ping                 → {"ok", "app", "version"}
 - GET  /api/bots                 → {"bots": [{"id","name","provider","model","mode"}]}
@@ -37,6 +48,7 @@ POST /api/approvals/<id> — أو تنتهي مهلة الوسيط (120 ثاني
 from __future__ import annotations
 
 import json
+import os
 import queue
 import secrets
 import socket
@@ -44,6 +56,7 @@ import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from .broker import PendingApprovals, request_summary
 
@@ -55,6 +68,64 @@ MAX_BODY_BYTES = 1_000_000  # حدّ حجم جسم الطلب — طلبات ا�
 SETTING_TOKEN = "companion_token"
 SETTING_PORT = "companion_port"
 SETTING_AUTOSTART = "companion_autostart"
+
+# ======================================================================
+# قشرة تطبيق الويب (PWA): قائمة بيضاء ومكان المجلد
+# ======================================================================
+# ملفات القشرة المسموح بخدمتها كما هي، باسم الأساس ونوع المحتوى.
+# أي اسم خارج هذه القائمة = 404 مهما كان موجوداً على القرص، فلا
+# مجال لعبور المسارات (../) ولا لكشف ملفات المجلد الأخرى.
+PWA_FILES = {
+    "index.html": "text/html; charset=utf-8",
+    "app.js": "text/javascript; charset=utf-8",
+    "manifest.webmanifest": "application/manifest+json",
+    "sw.js": "text/javascript; charset=utf-8",
+    "icon-192.png": "image/png",
+    "icon-512.png": "image/png",
+    "maskable-512.png": "image/png",
+    "apple-touch-icon.png": "image/png",
+}
+
+# متغيّر بيئة يتقدّم كل بحث تلقائي عن مجلد القشرة.
+ENV_PWA_DIR = "KROUCHI_PWA_DIR"
+
+
+def find_pwa_dir() -> Path | None:
+    """يحدّد مجلد قشرة تطبيق الويب (pwa) إن وُجد، وإلا None.
+
+    ترتيب البحث: متغيّر البيئة KROUCHI_PWA_DIR أولاً، ثم مجلد «pwa»
+    بجانب حزمة krouchi_dz (جذر المشروع — ينطبق على شجرة المصدر وعلى
+    الحزم إن ضمّن المُحزّم المجلد بجانب الحزمة)، ثم «pwa» داخل مجلد
+    العمل الحالي. لا يُقبل المرشّح إلا إن احتوى index.html فعلاً.
+    """
+    candidates: list[Path] = []
+    env_dir = os.environ.get(ENV_PWA_DIR)
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.append(Path(__file__).resolve().parent.parent / "pwa")
+    candidates.append(Path.cwd() / "pwa")
+    for candidate in candidates:
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
+def _static_name_for_path(path: str) -> str | None:
+    """اسم ملف القشرة المقابل لمسار طلب، أو None إن لم يطابق شكلاً مسموحاً.
+
+    الشكلان المسموحان فقط: «/<file>» و«/app/<file>»، و«/» وحده يعني
+    index.html. الاسم نفسه يُفحص لاحقاً ضدّ القائمة البيضاء PWA_FILES
+    قبل أي لمس للقرص، فمقاطع «..» لا تصل إلى نظام الملفات أبداً.
+    """
+    decoded = urllib.parse.unquote(path)
+    segments = [seg for seg in decoded.split("/") if seg not in ("", ".")]
+    if not segments:
+        return "index.html"
+    if len(segments) == 1:
+        return segments[0]
+    if len(segments) == 2 and segments[0] == "app":
+        return segments[1]
+    return None
 
 
 # ======================================================================
@@ -192,6 +263,9 @@ class CompanionServer:
     engine_call: دالة (fn) -> نتيجة، تُنفّذ fn(engine) على خيط مالك
     المحرّك حاجبةً (انظر ترويسة الوحدة). registry: سجلّ الموافقات
     المعلّقة المشترك نفسه الذي يغذّي وسيط المحرّك وبطاقة الواجهة.
+    pwa_dir: مجلد قشرة تطبيق الويب؛ None (الافتراضي) = بحث تلقائي
+    عبر find_pwa_dir(). مسار صريح غير موجود يُعطّل القشرة فقط —
+    واجهة /api/* تعمل في كل الحالات.
     """
 
     def __init__(
@@ -201,6 +275,7 @@ class CompanionServer:
         token: str,
         host: str = "0.0.0.0",
         port: int = DEFAULT_PORT,
+        pwa_dir: str | Path | None = None,
     ):
         if len(token or "") < TOKEN_MIN_CHARS:
             raise ValueError("رمز الربط قصير — 12 حرفاً على الأقل")
@@ -213,6 +288,13 @@ class CompanionServer:
         self._state_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        if pwa_dir is not None:
+            candidate = Path(pwa_dir)
+            self.pwa_dir: Path | None = (
+                candidate if (candidate / "index.html").is_file() else None
+            )
+        else:
+            self.pwa_dir = find_pwa_dir()
 
     # -- الحالة ---------------------------------------------------------
     @property
@@ -259,6 +341,30 @@ class CompanionServer:
                 daemon=True,
             )
             self._thread.start()
+        if self.pwa_dir is None:
+            print(
+                "Krouchi_DZ companion server: no pwa/ web-app folder "
+                "found — the static shell is disabled; the /api "
+                "companion API keeps working. Set KROUCHI_PWA_DIR or "
+                "place a pwa folder next to the krouchi_dz package "
+                "to serve the web app."
+            )
+
+    # -- قشرة تطبيق الويب -------------------------------------------------
+    def static_file(self, name: str) -> tuple[bytes, str] | None:
+        """(محتوى، نوع) ملف قشرة باسم أساس، أو None إن لم يكن متاحاً.
+
+        الاسم يجب أن يكون حرفياً أحد مفاتيح PWA_FILES — هذا هو حارس
+        العبور الوحيد اللازم: الاسم المفحوص لا يحتوي «/» أبداً،
+        فيُبنى المسار دائماً داخل مجلد القشرة نفسه.
+        """
+        content_type = PWA_FILES.get(name)
+        if content_type is None or self.pwa_dir is None:
+            return None
+        try:
+            return (self.pwa_dir / name).read_bytes(), content_type
+        except OSError:
+            return None
 
     def stop(self) -> None:
         """يوقف الخدمة ويحرّر المنفذ. لا شيء إن كان متوقّفاً أصلاً."""
@@ -329,7 +435,8 @@ class CompanionServer:
 # معالج الطلبات
 # ======================================================================
 class _Handler(BaseHTTPRequestHandler):
-    """يوجّه طلبات /api/* إلى الخادم المرافق بعد فحص رمز الربط."""
+    """يوجّه طلبات /api/* إلى الخادم المرافق بعد فحص رمز الربط،
+    ويخدم قشرة تطبيق الويب الثابتة (GET فقط، بلا رمز) خارج /api/."""
 
     server_version = "Krouchi_DZ"
 
@@ -346,6 +453,22 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_static(self, path: str) -> None:
+        """يخدم ملف قشرة من القائمة البيضاء، أو 404 JSON كغيره."""
+        name = _static_name_for_path(path)
+        found = self._srv.static_file(name) if name is not None else None
+        if found is None:
+            return self._send_json(404, {"error": "مسار غير معروف"})
+        body, content_type = found
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        if name == "sw.js":
+            # عامل الخدمة في الجذر أصلاً؛ الترويسة تصريح صريح بنطاقه
+            self.send_header("Service-Worker-Allowed", "/")
         self.end_headers()
         self.wfile.write(body)
 
@@ -392,6 +515,10 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         if not path.startswith("/api/"):
+            # خارج /api/: قشرة الويب الثابتة للقراءة فقط وبلا رمز؛
+            # أي طريقة غير GET أو اسم خارج القائمة البيضاء = 404.
+            if method == "GET":
+                return self._serve_static(path)
             return self._send_json(404, {"error": "مسار غير معروف"})
         if not self._srv.check_token(self.headers.get("X-Krouchi-Token")):
             return self._send_json(
