@@ -70,6 +70,22 @@
   .chatbar button { padding: 0 18px; font-size: 15px; background: #1565C0; color: #fff;
     border: none; border-radius: 8px; cursor: pointer; }
   .chatbar button:disabled { background: #90a4ae; }
+  button.secondary { background: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb;
+    border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .btnrow button { flex: 1; }
+  .mono { font-family: monospace; white-space: pre-wrap; word-wrap: break-word;
+    background: #263238; color: #eceff1; padding: 10px; border-radius: 8px;
+    font-size: 13px; max-height: 320px; overflow: auto; direction: ltr; text-align: left; }
+  .logline { font-size: 12px; color: #455a64; white-space: pre-wrap;
+    word-wrap: break-word; padding: 3px 0; border-bottom: 1px solid #eceff1; }
+  button.armed { background: #b71c1c !important; color: #fff !important;
+    border-color: #7f0000 !important; }
+  #pcScreenImg { width: 100%; display: none; background: #000; margin-top: 10px;
+    border: 1px solid #dde3e8; border-radius: 10px; touch-action: none;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  button.toggle-on { background: #1565C0 !important; color: #fff !important;
+    border-color: #0d47a1 !important; }
 </style>
 </head>
 <body>
@@ -151,8 +167,11 @@
     <input id="pc-port" type="number" dir="ltr" placeholder="8765">
     <label data-i18n="label_pc_token">رمز الاقتران</label>
     <input id="pc-token" type="password" dir="ltr" data-i18n-ph="ph_pc_token" placeholder="رمز الاقتران من الحاسوب">
+    <label data-i18n="label_pc_mac">عنوان MAC لبطاقة شبكة الحاسوب</label>
+    <input id="pcMac" type="text" dir="ltr" data-i18n-ph="ph_pc_mac" placeholder="AA:BB:CC:DD:EE:FF">
     <button id="pc-connect" class="primary" data-i18n="btn_connect">اتصال</button>
     <div id="pc-status" class="status"></div>
+    <button id="pcWakeBtn" data-i18n="btn_pc_wake">إيقاظ الحاسوب</button>
 
     <div id="pc-connected" style="display:none">
       <h2><span data-i18n="pc_pending_approvals">الموافقات المعلّقة</span> <span id="pc-approvals-count" class="badge err" style="display:none"></span></h2>
@@ -174,6 +193,150 @@
         </div>
         <button id="pc-chat-back" class="danger" data-i18n="btn_pc_back">عودة إلى بوتات الحاسوب</button>
       </div>
+
+      <div id="pc-tasks-wrap">
+        <h2 data-i18n="pc_tasks_title">المهام</h2>
+        <label data-i18n="label_task_bot">البوت المنفِّذ</label>
+        <select id="task-bot"></select>
+        <label data-i18n="label_task_title">عنوان المهمة</label>
+        <input id="task-title" type="text" data-i18n-ph="ph_task_title" placeholder="مثال: لخّص ملفّ الملاحظات">
+        <label data-i18n="label_task_prompt">نصّ المهمة</label>
+        <textarea id="task-prompt" data-i18n-ph="ph_task_prompt" placeholder="اكتب ما تريد من البوت أن يفعله على الحاسوب…"></textarea>
+        <button id="task-create" class="primary" data-i18n="btn_task_create">إرسال المهمة إلى الحاسوب</button>
+        <div id="task-status" class="status"></div>
+        <div id="pc-tasks-list"></div>
+      </div>
+
+      <div id="pc-task-detail" style="display:none">
+        <h2 id="task-detail-title"></h2>
+        <div id="task-detail-meta"></div>
+        <div id="task-detail-body"></div>
+        <div class="btnrow">
+          <button id="task-cancel" class="danger" data-i18n="btn_task_cancel">إلغاء المهمة</button>
+          <button id="task-back" class="secondary" data-i18n="btn_back_tasks">عودة إلى المهام</button>
+        </div>
+      </div>
+
+      <div id="pc-control-wrap">
+        <h2 data-i18n="pc_control_title">التحكّم بالحاسوب</h2>
+        <div class="card">
+          <div id="pc-status-fields"></div>
+          <button id="status-refresh" class="secondary" data-i18n="btn_refresh">تحديث</button>
+        </div>
+
+        <h2 data-i18n="files_title">ملفّات الحاسوب</h2>
+        <div class="card">
+          <div id="files-path" class="muted" dir="ltr"></div>
+          <button id="files-up" class="secondary" data-i18n="btn_up">⬆️ المجلد الأعلى</button>
+          <div id="files-list"></div>
+          <div id="files-status" class="status"></div>
+        </div>
+
+        <h2 data-i18n="upload_title">رفع ملف إلى الحاسوب</h2>
+        <p class="muted" data-i18n="upload_note">يُحفظ الملف المرفوع في المجلد المعروض حالياً في متصفّح الملفّات أعلاه.</p>
+        <input id="upload-input" type="file">
+        <div id="upload-status" class="status"></div>
+
+        <h2 data-i18n="printers_title">الطابعات</h2>
+        <label data-i18n="label_printer">الطابعة</label>
+        <select id="printer-select"></select>
+        <div id="printers-list"></div>
+
+        <h2 data-i18n="run_title">تشغيل أمر</h2>
+        <label data-i18n="label_run_command">الأمر</label>
+        <input id="run-input" type="text" dir="ltr" data-i18n-ph="ph_run_command" placeholder="الأمر المراد تشغيله على الحاسوب">
+        <button id="run-btn" class="primary" data-i18n="btn_run">تشغيل</button>
+        <p class="muted" data-i18n="run_note">قد يطلب الحاسوب موافقتك قبل التنفيذ — يظهر الطلب في قسم «الموافقات المعلّقة» أعلاه أو على شاشة الحاسوب نفسه.</p>
+        <pre id="run-output" class="mono" style="display:none"></pre>
+
+        <h2 data-i18n="open_title">فتح برنامج أو ملف أو رابط</h2>
+        <label data-i18n="label_open_target">الهدف (اسم برنامج أو مسار أو رابط)</label>
+        <input id="open-input" type="text" dir="ltr" data-i18n-ph="ph_open_target" placeholder="notepad أو https://…">
+        <button id="open-btn" class="primary" data-i18n="btn_open">فتح على الحاسوب</button>
+        <div id="open-status" class="status"></div>
+
+        <h2 data-i18n="screenshot_title">لقطة شاشة الحاسوب</h2>
+        <button id="shot-btn" class="primary" data-i18n="btn_screenshot">التقط لقطة</button>
+        <div id="shot-status" class="status"></div>
+        <img id="shot-img" alt="" style="display:none;max-width:100%;margin-top:10px;border:1px solid #dde3e8;border-radius:10px">
+
+        <h2 data-i18n="clipboard_title">حافظة الحاسوب</h2>
+        <textarea id="clip-text" data-i18n-ph="ph_clipboard" placeholder="نصّ الحافظة…"></textarea>
+        <div class="btnrow">
+          <button id="clip-get" class="secondary" data-i18n="btn_clip_get">جلب نصّ حافظة الحاسوب</button>
+          <button id="clip-set" class="secondary" data-i18n="btn_clip_set">إرسال إلى حافظة الحاسوب</button>
+        </div>
+        <div id="clip-status" class="status"></div>
+
+        <h2 data-i18n="volume_title">الصوت</h2>
+        <div class="btnrow">
+          <button id="vol-down" class="secondary" data-i18n="btn_vol_down">🔉 خفض</button>
+          <button id="vol-mute" class="secondary" data-i18n="btn_vol_mute">🔇 كتم</button>
+          <button id="vol-up" class="secondary" data-i18n="btn_vol_up">🔊 رفع</button>
+        </div>
+
+        <h2 data-i18n="windows_title">النوافذ المفتوحة</h2>
+        <button id="windows-refresh" class="secondary" data-i18n="btn_refresh">تحديث</button>
+        <div id="windows-list"></div>
+
+        <h2 data-i18n="processes_title">العمليات</h2>
+        <button id="proc-refresh" class="secondary" data-i18n="btn_refresh">تحديث</button>
+        <div id="proc-list"></div>
+
+        <h2 data-i18n="power_title">الطاقة</h2>
+        <div class="btnrow">
+          <button id="power-shutdown" class="danger">إيقاف الحاسوب</button>
+          <button id="power-restart" class="danger">إعادة التشغيل</button>
+        </div>
+        <div class="btnrow">
+          <button id="power-lock" class="danger">قفل</button>
+          <button id="power-sleep" class="danger">نوم</button>
+          <button id="power-logoff" class="danger">تسجيل الخروج</button>
+        </div>
+        <div id="power-status" class="status"></div>
+      </div>
+
+      <div id="pc-screen-wrap">
+        <h2 data-i18n="screen_title">شاشة الحاسوب الحية</h2>
+        <p class="muted" data-i18n="screen_note">بثّ مباشر لشاشة الحاسوب — المس الصورة للنقر، واضغط مطوّلاً للنقر الأيمن، واسحب لتحريك المؤشّر.</p>
+        <div class="btnrow">
+          <button id="screen-start" class="primary" data-i18n="btn_screen_start">بدء الشاشة</button>
+          <button id="screen-stop" class="danger" data-i18n="btn_screen_stop" style="display:none">إيقاف</button>
+          <button id="screen-drag" class="secondary" data-i18n="btn_screen_drag">سحب النوافذ</button>
+        </div>
+        <div id="screen-status" class="status"></div>
+        <img id="pcScreenImg" alt="" draggable="false">
+        <div class="btnrow">
+          <button id="screen-wheel-up" class="secondary">▲</button>
+          <button id="screen-wheel-down" class="secondary">▼</button>
+        </div>
+        <label data-i18n="label_screen_text">نصّ يُكتب على الحاسوب</label>
+        <div class="chatbar">
+          <textarea id="screen-text" data-i18n-ph="ph_screen_text" placeholder="اكتب نصّاً ليُكتَب على الحاسوب…"></textarea>
+          <button id="screen-send-text" data-i18n="btn_screen_send_text">إرسال النص</button>
+        </div>
+        <h2 data-i18n="screen_keys_title">مفاتيح خاصة</h2>
+        <div class="btnrow">
+          <button class="secondary" data-screen-key="enter">Enter</button>
+          <button class="secondary" data-screen-key="esc">Esc</button>
+          <button class="secondary" data-screen-key="tab">Tab</button>
+          <button class="secondary" data-screen-key="backspace">⌫</button>
+        </div>
+        <div class="btnrow">
+          <button class="secondary" data-screen-key="delete">Delete</button>
+          <button class="secondary" data-screen-key="up">↑</button>
+          <button class="secondary" data-screen-key="down">↓</button>
+          <button class="secondary" data-screen-key="left">←</button>
+          <button class="secondary" data-screen-key="right">→</button>
+        </div>
+        <div class="btnrow">
+          <button class="secondary" data-screen-key="ctrl+c">Ctrl+C</button>
+          <button class="secondary" data-screen-key="ctrl+v">Ctrl+V</button>
+          <button class="secondary" data-screen-key="ctrl+z">Ctrl+Z</button>
+          <button class="secondary" data-screen-key="alt+tab">Alt+Tab</button>
+          <button class="secondary" data-screen-key="win">Win</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -181,7 +344,7 @@
   <section id="tab-about" style="display:none">
     <h2 data-i18n="about_title">حول Krouchi_DZ</h2>
     <p><b data-i18n="about_author">تأليف: كروشي عبد الرزاق</b></p>
-    <p data-i18n="about_p1">الإصدار 3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي،
+    <p data-i18n="about_p1">الإصدار 3.3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي،
        بشيفرة أصلية مكتوبة من الصفر.</p>
     <p data-i18n-html="about_p2">وضعان: <b>مستقل على الهاتف</b> (إدخال API واكتشاف النماذج
        والمحادثة — لا أدوات ملفات ولا تشغيل أوامر على الهاتف)،

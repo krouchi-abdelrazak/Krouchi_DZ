@@ -7,7 +7,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'krouchi-dz-shell-v1';
+var CACHE_NAME = 'krouchi-dz-shell-v2';
 var SHELL_ASSETS = [
   './',
   './index.html',

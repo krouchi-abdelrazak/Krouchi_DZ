@@ -279,6 +279,37 @@ ok('pwa folder: no forbidden origin mentions anywhere', () => {
   }
 });
 
+/* ================= v3.2: approval-denied mapping ================= */
+
+await okAsync('pcRequest: 403 with a denied body -> kind denied', async () => {
+  const transport = () => Promise.resolve(
+    { status: 403, text: '{"error":"denied"}', error: '' });
+  await rejectsKind(app.pcRequest({ host: 'h', token: 't' }, 'POST',
+    '/api/run', app.runBody('dir'), null, transport), 'denied');
+});
+
+await okAsync('pcRequest: plain 403 -> kind auth (bad token)', async () => {
+  const transport = () => Promise.resolve(
+    { status: 403, text: '', error: '' });
+  await rejectsKind(app.pcRequest({ host: 'h', token: 't' }, 'GET',
+    '/api/bots', null, null, transport), 'auth');
+});
+
+await okAsync('pcRequest: task creation body + detail parse', async () => {
+  const transport = (method, url, headers, body) => {
+    assert.ok(url.endsWith('/api/tasks'), 'tasks URL');
+    assert.deepStrictEqual(JSON.parse(body),
+      { bot_id: 3, title: 'T', prompt: 'P' });
+    return Promise.resolve({ status: 200, error: '',
+      text: '{"task":{"id":9,"title":"T","status":"queued"}}' });
+  };
+  const data = await app.pcRequest({ host: 'h', token: 't' }, 'POST',
+    '/api/tasks', app.taskBody('3', 'T', 'P'), null, transport);
+  const created = app.parseTaskDetail(data);
+  assert.strictEqual(created.id, '9');
+  assert.strictEqual(created.status, 'queued');
+});
+
 /* ================= regression subset: pure UI functions ================= */
 
 ok('regression: normalizeBaseUrl mirrors the phone UI', () => {
@@ -324,4 +355,274 @@ if (failed) process.exitCode = 1;
 ok('معرّف بوت نصّي رقمي يُحوَّل إلى رقم (إصلاح HTTP 400)', () => {
   assert.deepStrictEqual(app.pcChatBody('3', 'سلام'), { bot_id: 3, text: 'سلام' });
   assert.deepStrictEqual(app.pcChatBody(3, 'سلام'), { bot_id: 3, text: 'سلام' });
+});
+/* ================= v3.2: tasks + full control helpers ================= */
+
+ok('v3.2 markup: tasks and control sections exist in index.html', () => {
+  const html32 = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  const ids = ['pc-tasks-wrap', 'task-bot', 'task-title', 'task-prompt',
+    'task-create', 'task-status', 'pc-tasks-list', 'pc-task-detail',
+    'task-detail-title', 'task-cancel', 'task-back', 'pc-control-wrap',
+    'pc-status-fields', 'status-refresh', 'files-path', 'files-up',
+    'files-list', 'files-status', 'upload-input', 'upload-status',
+    'printer-select', 'printers-list', 'run-input', 'run-btn', 'run-output',
+    'open-input', 'open-btn', 'shot-btn', 'shot-status', 'shot-img',
+    'clip-text', 'clip-get', 'clip-set', 'vol-down', 'vol-mute', 'vol-up',
+    'windows-refresh', 'windows-list', 'proc-refresh', 'proc-list',
+    'power-shutdown', 'power-restart', 'power-lock', 'power-sleep',
+    'power-logoff', 'power-status'];
+  for (const id of ids) {
+    assert.ok(html32.indexOf('id="' + id + '"') >= 0, 'missing #' + id);
+  }
+});
+
+ok('v3.2: taskBody coerces a numeric-string bot_id to a number', () => {
+  assert.deepStrictEqual(app.taskBody('5', 't', 'p'),
+    { bot_id: 5, title: 't', prompt: 'p' });
+  assert.deepStrictEqual(app.taskBody('b1', 't', 'p'),
+    { bot_id: 'b1', title: 't', prompt: 'p' });
+  assert.strictEqual(app.coerceNumericId('7'), 7);
+  assert.strictEqual(app.coerceNumericId('3.5'), '3.5');
+});
+
+ok('v3.2: parseTasks + parseTaskDetail normalize and filter', () => {
+  assert.deepStrictEqual(
+    app.parseTasks({ tasks: [{ id: 3, title: 'A', status: 'done' }, { title: 'x' }] }),
+    [{ id: '3', bot_id: '', bot_name: '', title: 'A', status: 'done',
+       created_at: '', started_at: '', finished_at: '' }]);
+  throwsKind(() => app.parseTasks({ tasks: {} }), 'bad_shape');
+  const d = app.parseTaskDetail({ task: { id: 1, title: 'T', prompt: 'P',
+    log: [{ ts: '1', kind: 'k', text: 'line' }, 'plain'] } });
+  assert.strictEqual(d.prompt, 'P');
+  assert.deepStrictEqual(d.log, [{ ts: '1', kind: 'k', text: 'line' },
+    { ts: '', kind: '', text: 'plain' }]);
+  throwsKind(() => app.parseTaskDetail({}), 'bad_shape');
+});
+
+ok('v3.2: task status labels — six statuses, both languages, unknown fallback', () => {
+  const statuses = ['queued', 'running', 'waiting_approval', 'done',
+    'failed', 'cancelled'];
+  assert.deepStrictEqual(app.TASK_STATUSES, statuses);
+  app.setLang('ar');
+  for (const s of statuses) {
+    assert.strictEqual(app.taskStatusKey(s), 'task_status_' + s);
+    assert.strictEqual(app.taskStatusLabel(s), app.STRINGS.ar['task_status_' + s]);
+  }
+  app.setLang('en');
+  for (const s of statuses) {
+    assert.strictEqual(app.taskStatusLabel(s), app.STRINGS.en['task_status_' + s]);
+  }
+  assert.strictEqual(app.taskStatusKey('nope'), 'task_status_unknown');
+  assert.strictEqual(app.taskStatusLabel('nope'), app.STRINGS.en.task_status_unknown);
+  app.setLang('ar');
+});
+
+ok('v3.2: parseStatus + formatUptime + formatSize', () => {
+  const st = app.parseStatus({ hostname: 'PC', home: '/home/u', uptime_s: 60,
+    disk: { total_gb: 100, free_gb: 40 }, ram_mb: null });
+  assert.strictEqual(st.hostname, 'PC');
+  assert.deepStrictEqual(st.disk, { total_gb: 100, free_gb: 40 });
+  assert.strictEqual(st.ram_mb, null);
+  assert.strictEqual(app.parseStatus({}).disk, null);
+  throwsKind(() => app.parseStatus(null), 'bad_shape');
+  assert.strictEqual(app.formatUptime(0), '0:00:00');
+  assert.strictEqual(app.formatUptime(3661), '1:01:01');
+  assert.strictEqual(app.formatUptime(90061), '1d 1:01:01');
+  app.setLang('ar');
+  assert.strictEqual(app.formatSize(2048), '2 KB');
+  assert.strictEqual(app.formatSize(null), '');
+});
+
+ok('v3.2: parseFiles + joinRemotePath (traversal-free rendering inputs)', () => {
+  const listing = app.parseFiles({ path: '/home/u', parent: '/home', entries: [
+    { name: 'docs', kind: 'dir' }, { name: 'a.txt', kind: 'file', size: 12 },
+    { name: '' }, null] });
+  assert.deepStrictEqual(listing.entries, [
+    { name: 'docs', kind: 'dir', size: null },
+    { name: 'a.txt', kind: 'file', size: 12 }]);
+  assert.strictEqual(listing.parent, '/home');
+  throwsKind(() => app.parseFiles({ entries: {} }), 'bad_shape');
+  assert.strictEqual(app.joinRemotePath('/home/u', 'a.txt'), '/home/u/a.txt');
+  assert.strictEqual(app.joinRemotePath('C:\\Users\\u', 'a.txt'),
+    'C:\\Users\\u\\a.txt');
+  assert.strictEqual(app.joinRemotePath('C:\\', 'a.txt'), 'C:\\a.txt');
+  assert.strictEqual(app.joinRemotePath('', 'a.txt'), 'a.txt');
+});
+
+ok('v3.2: parseFileDownload guards the base64 payload', () => {
+  assert.deepStrictEqual(
+    app.parseFileDownload({ name: 'a', size: 3, content_b64: 'QUJD' }),
+    { name: 'a', size: 3, content_b64: 'QUJD' });
+  throwsKind(() => app.parseFileDownload({ name: 'a' }), 'bad_shape');
+});
+
+ok('v3.2: run/open/power bodies and result parsers', () => {
+  assert.deepStrictEqual(app.runBody('dir'), { command: 'dir' });
+  assert.deepStrictEqual(app.parseRunResult({ exit: 2, stdout: 'o' }),
+    { exit: 2, stdout: 'o', stderr: '', timed_out: false });
+  assert.deepStrictEqual(app.openBody('notepad'), { target: 'notepad' });
+  for (const a of ['shutdown', 'restart', 'lock', 'sleep', 'logoff']) {
+    assert.deepStrictEqual(app.powerBody(a), { action: a });
+  }
+  assert.deepStrictEqual(app.powerBody('bogus'), { action: 'shutdown' });
+  assert.deepStrictEqual(app.parsePower({ ok: true, scheduled_in_s: 5 }),
+    { ok: true, scheduled_in_s: 5 });
+  assert.deepStrictEqual(app.parsePower({ ok: true }),
+    { ok: true, scheduled_in_s: null });
+});
+
+ok('v3.2: screenshot data-URI builder sanitizes the format', () => {
+  assert.strictEqual(
+    app.screenshotDataUri({ image_b64: 'QUJD', format: 'png' }),
+    'data:image/png;base64,QUJD');
+  assert.strictEqual(
+    app.screenshotDataUri({ image_b64: 'QUJD', format: 'JPG ' }),
+    'data:image/jpg;base64,QUJD');
+  assert.strictEqual(
+    app.screenshotDataUri({ image_b64: 'QUJD' }),
+    'data:image/png;base64,QUJD');
+  throwsKind(() => app.parseScreenshot({ image_b64: '' }), 'bad_shape');
+});
+
+ok('v3.2: printBody omits an empty printer, parsePrinters normalizes', () => {
+  const b = app.printBody('/a/b.txt', '  ');
+  assert.deepStrictEqual(b, { path: '/a/b.txt' });
+  assert.ok(!('printer' in b));
+  assert.deepStrictEqual(app.printBody('/a/b.txt', ' HP '),
+    { path: '/a/b.txt', printer: 'HP' });
+  assert.deepStrictEqual(
+    app.parsePrinters({ printers: [{ name: 'HP', is_default: true },
+      { name: 'PDF' }, { name: '' }] }),
+    [{ name: 'HP', is_default: true }, { name: 'PDF', is_default: false }]);
+  throwsKind(() => app.parsePrinters({}), 'bad_shape');
+});
+
+ok('v3.2: uploadBody splits the base64 payload off a data URL', () => {
+  assert.deepStrictEqual(
+    app.uploadBody('a.txt', 'data:text/plain;base64,QUJD'),
+    { path: 'a.txt', content_b64: 'QUJD' });
+  assert.deepStrictEqual(
+    app.uploadBody('a.txt', 'QUJD'), { path: 'a.txt', content_b64: 'QUJD' });
+  assert.deepStrictEqual(
+    app.uploadBody('a.txt', 'data:image/png;base64,QU JD\n'),
+    { path: 'a.txt', content_b64: 'QUJD' });
+});
+
+ok('v3.2: clipboardBody + parseClipboard', () => {
+  assert.deepStrictEqual(app.clipboardBody('x'), { text: 'x' });
+  assert.deepStrictEqual(app.clipboardBody(null), { text: '' });
+  assert.strictEqual(app.parseClipboard({ text: 'hello' }), 'hello');
+  throwsKind(() => app.parseClipboard({}), 'bad_shape');
+});
+
+ok('v3.2: volumeBody + parseWindows + windowBody', () => {
+  assert.deepStrictEqual(app.volumeBody('up'), { action: 'up' });
+  assert.deepStrictEqual(app.volumeBody('bogus'), { action: 'mute' });
+  assert.deepStrictEqual(
+    app.parseWindows({ windows: [{ id: 5, title: 'T' }, { title: 'x' }] }),
+    [{ id: 5, title: 'T' }]);
+  throwsKind(() => app.parseWindows({}), 'bad_shape');
+  assert.deepStrictEqual(app.windowBody('42', 'close'), { id: 42, action: 'close' });
+  assert.deepStrictEqual(app.windowBody(7, 'bogus'), { id: 7, action: 'focus' });
+});
+
+ok('v3.2: parseProcesses + killBody', () => {
+  assert.deepStrictEqual(
+    app.parseProcesses({ processes: [{ pid: '12', name: 'b', mem_mb: 'x' },
+      { pid: 3, name: 'a', mem_mb: 50 }, { pid: 'x' }] }),
+    [{ pid: 12, name: 'b', mem_mb: null }, { pid: 3, name: 'a', mem_mb: 50 }]);
+  throwsKind(() => app.parseProcesses({}), 'bad_shape');
+  assert.deepStrictEqual(app.killBody('42'), { pid: 42 });
+});
+
+/* ================= Wake-on-LAN (phone-side helpers) ================= */
+
+ok('wol: normalizeMac accept matrix normalizes to canonical form', () => {
+  assert.strictEqual(app.normalizeMac('AA:BB:CC:DD:EE:FF'), 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.normalizeMac('aa-bb-cc-dd-ee-ff'), 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.normalizeMac('aabbccddeeff'), 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.normalizeMac(' Aa:Bb:Cc:Dd:Ee:Ff '), 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.normalizeMac('01:23:45:67:89:ab'), '01:23:45:67:89:AB');
+});
+
+ok('wol: normalizeMac reject matrix returns null', () => {
+  assert.strictEqual(app.normalizeMac('AA:BB:CC:DD:EE'), null);
+  assert.strictEqual(app.normalizeMac('AA:BB:CC:DD:EE:FF:00'), null);
+  assert.strictEqual(app.normalizeMac('GG:BB:CC:DD:EE:FF'), null);
+  assert.strictEqual(app.normalizeMac(''), null);
+  assert.strictEqual(app.normalizeMac(null), null);
+  assert.strictEqual(app.normalizeMac(undefined), null);
+});
+
+ok('wol: saved settings persist mac and tolerate a missing one', () => {
+  __lsStore['krouchi.pc.v1'] = JSON.stringify({ host: 'old', port: 8765, token: 'x' });
+  const old = app.loadPcConfig();
+  assert.strictEqual(old.host, 'old');
+  assert.strictEqual(old.mac, '');
+  const saved = app.savePcConfig({ host: 'h', token: 't', mac: 'aa-bb-cc-dd-ee-ff' });
+  assert.strictEqual(saved.mac, 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.loadPcConfig().mac, 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(app.normalizePcConfig({ mac: 'bogus' }).mac, '');
+});
+
+ok('wol markup: pcMac field and pcWakeBtn exist in index.html', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  assert.ok(h.indexOf('id="pcMac"') >= 0, 'missing #pcMac');
+  assert.ok(h.indexOf('id="pcWakeBtn"') >= 0, 'missing #pcWakeBtn');
+});
+
+/* ================= v3.3: live screen helpers ================= */
+
+ok('screen: screenStreamUrl shape, defaults and token encoding', () => {
+  assert.strictEqual(
+    app.screenStreamUrl({ host: '192.168.1.10', token: 'tok123' }, { w: 1280, q: 60, fps: 10 }),
+    'http://192.168.1.10:8765/api/screen/stream?token=tok123&w=1280&q=60&fps=10');
+  assert.strictEqual(
+    app.screenStreamUrl({ host: 'pc.local', port: 9000, token: 'a b&c=d' }, { w: 960, q: 40, fps: 5 }),
+    'http://pc.local:9000/api/screen/stream?token=a%20b%26c%3Dd&w=960&q=40&fps=5');
+  assert.strictEqual(
+    app.screenStreamUrl({ host: '192.168.1.10', token: 't' }),
+    'http://192.168.1.10:8765/api/screen/stream?token=t&w=1280&q=60&fps=10');
+});
+
+ok('screen: normPoint corners, center and clamping', () => {
+  const rect = { left: 100, top: 50, width: 400, height: 200 };
+  assert.deepStrictEqual(app.normPoint(100, 50, rect), { x: 0, y: 0 });
+  assert.deepStrictEqual(app.normPoint(500, 250, rect), { x: 1, y: 1 });
+  assert.deepStrictEqual(app.normPoint(300, 150, rect), { x: 0.5, y: 0.5 });
+  assert.deepStrictEqual(app.normPoint(-5, 999, rect), { x: 0, y: 1 });
+  assert.deepStrictEqual(app.normPoint(10, 10, { left: 0, top: 0, width: 0, height: 0 }), { x: 0, y: 0 });
+  assert.deepStrictEqual(app.normPoint(10, 10, null), { x: 0, y: 0 });
+});
+
+ok('screen: input body builders (mouse, wheel, key, text)', () => {
+  assert.deepStrictEqual(app.inputMouseBody('mouse_down', { x: 0.5, y: 0.25 }),
+    { type: 'mouse_down', x: 0.5, y: 0.25, button: 'left' });
+  assert.deepStrictEqual(app.inputMouseBody('mouse_up', { x: 0, y: 1 }, 'right'),
+    { type: 'mouse_up', x: 0, y: 1, button: 'right' });
+  assert.deepStrictEqual(app.inputMouseBody('bogus', { x: 2, y: -1 }),
+    { type: 'mouse_move', x: 1, y: 0, button: 'left' });
+  assert.deepStrictEqual(app.inputWheelBody({ x: 0.5, y: 0.5 }, 1),
+    { type: 'wheel', x: 0.5, y: 0.5, delta: 1 });
+  assert.deepStrictEqual(app.inputWheelBody({ x: 0.5, y: 0.5 }, -1),
+    { type: 'wheel', x: 0.5, y: 0.5, delta: -1 });
+  assert.deepStrictEqual(app.inputKeyBody('alt+tab'), { type: 'key', key: 'alt+tab' });
+  assert.deepStrictEqual(app.inputKeyBody(null), { type: 'key', key: '' });
+  assert.deepStrictEqual(app.inputTextBody('hi'), { type: 'text', text: 'hi' });
+  assert.deepStrictEqual(app.inputTextBody(null), { type: 'text', text: '' });
+});
+
+ok('screen markup: live screen section and keys exist in index.html', () => {
+  const hs = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  const ids = ['pc-screen-wrap', 'screen-start', 'screen-stop', 'screen-drag',
+    'screen-status', 'pcScreenImg', 'screen-wheel-up', 'screen-wheel-down',
+    'screen-text', 'screen-send-text'];
+  for (const id of ids) {
+    assert.ok(hs.indexOf('id="' + id + '"') >= 0, 'missing #' + id);
+  }
+  const keys = ['enter', 'esc', 'tab', 'backspace', 'delete', 'up', 'down',
+    'left', 'right', 'ctrl+c', 'ctrl+v', 'ctrl+z', 'alt+tab', 'win'];
+  for (const k of keys) {
+    assert.ok(hs.indexOf('data-screen-key="' + k + '"') >= 0, 'missing key ' + k);
+  }
 });
