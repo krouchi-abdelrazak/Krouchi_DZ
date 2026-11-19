@@ -24,8 +24,10 @@ from krouchi_dz.broker import PendingApprovals
 from krouchi_dz.engine import ChatEngine
 from krouchi_dz.providers import ChatResult, MockProvider, ToolCall
 from krouchi_dz.server import (
+    PWA_FILES,
     CompanionServer,
     EngineGateway,
+    find_pwa_dir,
     generate_token,
     get_or_create_token,
     regenerate_token,
@@ -41,7 +43,7 @@ class ServerFixture(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def make_server(self, mock=None, ask_timeout=10.0):
+    def make_server(self, mock=None, ask_timeout=10.0, **server_kwargs):
         self.mock = mock if mock is not None else MockProvider()
         self.registry = PendingApprovals()
         data_dir = Path(self.tmp.name) / "data"
@@ -63,6 +65,7 @@ class ServerFixture(unittest.TestCase):
             registry=self.registry,
             token=TOKEN,
             port=0,
+            **server_kwargs,
         )
         self.server.start()
         self.addCleanup(self.server.stop)
@@ -85,6 +88,21 @@ class ServerFixture(unittest.TestCase):
         raw = resp.read()
         conn.close()
         return resp.status, json.loads(raw.decode("utf-8"))
+
+    def request_raw(self, method, path, token=None):
+        """طلب بلا جسم وبلا رمز افتراضياً؛ يرجع (حالة، ترويسات، بايتات)."""
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", self.server.port, timeout=15
+        )
+        hdrs = {}
+        if token is not None:
+            hdrs["X-Krouchi-Token"] = token
+        conn.request(method, path, headers=hdrs)
+        resp = conn.getresponse()
+        raw = resp.read()
+        headers = {k.lower(): v for k, v in resp.getheaders()}
+        conn.close()
+        return resp.status, headers, raw
 
     def wait_pending_http(self, timeout=8.0):
         deadline = time.monotonic() + timeout
@@ -292,6 +310,124 @@ class TestTokenHelpers(ServerFixture):
 
     def test_generate_token_length(self):
         self.assertGreaterEqual(len(generate_token()), 12)
+
+
+class TestStaticShell(ServerFixture):
+    """قشرة تطبيق الويب: تُخدَم بلا رمز، وبالقائمة البيضاء فقط."""
+
+    def setUp(self):
+        super().setUp()
+        self.pwa_dir = find_pwa_dir()
+        # شجرة المصدر تحمل مجلد pwa/ بجانب الحزمة — البحث يجب أن يجده
+        self.assertIsNotNone(self.pwa_dir)
+
+    def test_root_serves_index_without_token(self):
+        self.make_server()
+        status, headers, raw = self.request_raw("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["content-type"], PWA_FILES["index.html"])
+        self.assertEqual(raw, (self.pwa_dir / "index.html").read_bytes())
+
+    def test_each_shell_file_both_shapes(self):
+        self.make_server()
+        for name, content_type in PWA_FILES.items():
+            expected = (self.pwa_dir / name).read_bytes()
+            for prefix in ("/", "/app/"):
+                status, headers, raw = self.request_raw(
+                    "GET", prefix + name
+                )
+                self.assertEqual(status, 200, prefix + name)
+                self.assertEqual(
+                    headers["content-type"], content_type, prefix + name
+                )
+                self.assertEqual(raw, expected, prefix + name)
+
+    def test_service_worker_allowed_header(self):
+        self.make_server()
+        status, headers, _ = self.request_raw("GET", "/sw.js")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("service-worker-allowed"), "/")
+
+    def test_traversal_attempts_are_404(self):
+        self.make_server()
+        for path in (
+            "/../krouchi_dz/server.py",
+            "/app/../../krouchi_dz/server.py",
+            "/%2e%2e%2fserver.py",
+            "/app/%2e%2e/sw.js/../server.py",
+        ):
+            status, _, _ = self.request_raw("GET", path)
+            self.assertEqual(status, 404, path)
+
+    def test_unlisted_or_unknown_paths_are_404(self):
+        # README.md و tests_pwa.js موجودان فعلاً داخل مجلد pwa لكنهما
+        # خارج القائمة البيضاء — يجب ألا يُخدَما أبداً.
+        self.make_server()
+        for path in ("/README.md", "/tests_pwa.js", "/nope.txt"):
+            status, _, _ = self.request_raw("GET", path)
+            self.assertEqual(status, 404, path)
+
+    def test_api_still_requires_token_with_shell_on(self):
+        self.make_server()
+        status, _, _ = self.request_raw("GET", "/api/ping")
+        self.assertEqual(status, 401)
+        status, data = self.request("GET", "/api/ping")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["ok"])
+
+    def test_post_to_static_path_is_404(self):
+        self.make_server()
+        status, _, _ = self.request_raw("POST", "/index.html")
+        self.assertEqual(status, 404)
+
+
+class TestPwaDirResolution(ServerFixture):
+    """تحديد مجلد القشرة: متغيّر البيئة أولاً، والصريح عند البناء."""
+
+    def test_env_var_wins(self):
+        custom = Path(self.tmp.name) / "custom_pwa"
+        custom.mkdir()
+        (custom / "index.html").write_bytes(b"<html>custom</html>")
+        old = os.environ.get("KROUCHI_PWA_DIR")
+        os.environ["KROUCHI_PWA_DIR"] = str(custom)
+        try:
+            self.assertEqual(find_pwa_dir(), custom)
+        finally:
+            if old is None:
+                del os.environ["KROUCHI_PWA_DIR"]
+            else:
+                os.environ["KROUCHI_PWA_DIR"] = old
+
+    def test_explicit_dir_is_used(self):
+        custom = Path(self.tmp.name) / "explicit_pwa"
+        custom.mkdir()
+        (custom / "index.html").write_bytes(b"<html>explicit</html>")
+        server = self.make_server(pwa_dir=custom)
+        self.assertEqual(server.pwa_dir, custom)
+        status, _, raw = self.request_raw("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertEqual(raw, b"<html>explicit</html>")
+
+
+class TestMissingPwaDir(ServerFixture):
+    """بلا مجلد قشرة: المسارات الثابتة 404 وواجهة /api/* تعمل كاملة."""
+
+    def test_static_routes_are_404(self):
+        server = self.make_server(
+            pwa_dir=Path(self.tmp.name) / "no_such_pwa"
+        )
+        self.assertIsNone(server.pwa_dir)
+        for path in ("/", "/index.html", "/app/app.js"):
+            status, _, _ = self.request_raw("GET", path)
+            self.assertEqual(status, 404, path)
+
+    def test_api_keeps_working_without_shell(self):
+        self.make_server(pwa_dir=Path(self.tmp.name) / "no_such_pwa")
+        status, data = self.request("GET", "/api/ping")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["ok"])
+        status, _ = self.request("GET", "/api/ping", token=None)
+        self.assertEqual(status, 401)
 
 
 if __name__ == "__main__":
