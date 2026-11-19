@@ -16,7 +16,9 @@ desktop runs a small local server that the Android app connects to,
 so the phone chats with the computer's own bots — approvals included
 (see "Phone companion" below). **Version 3.0.0** makes the interface
 bilingual — Arabic and English, switchable live from the main window
-(see "Interface languages" below).
+(see "Interface languages" below). **Version 3.3.0** adds bot tasks,
+full phone control of the PC, and a live screen with touch mouse and
+keyboard (see "Tasks, full control and the live screen" below).
 
 ## What Step 1 does
 
@@ -32,6 +34,9 @@ bilingual — Arabic and English, switchable live from the main window
 | Graphical interface | `krouchi_dz/gui.py` | Tkinter (standard library): bot list, conversation, an Add-API screen, approval cards, an audit log — and the engine runs on its own thread so the UI never freezes |
 | Phone companion server | `krouchi_dz/server.py` | A standard-library HTTP server on the local network (port 8765): the phone app connects with a pairing token and uses the desktop's bots; approvals resolve from one shared pending-approval registry, on the PC card or from the phone |
 | Interface languages | `krouchi_dz/i18n.py` | One string table for Arabic and English; every GUI string goes through `t()`, the choice persists in the settings table (`ui_lang`), and the layout mirrors with the language (sidebar right in Arabic, left in English) |
+| Bot tasks | `krouchi_dz/tasks.py` | Long-running tasks assigned to a bot: queued / running / waiting-approval / done / failed / cancelled, a capped event log, cooperative cancellation, and tasks left active at shutdown marked failed ("interrupted") at the next start |
+| Phone control surface | `krouchi_dz/control.py` | The PC-side executors behind the companion server's control endpoints: status, files, printing, commands, clipboard, volume, windows, processes and power — every sensitive one gated by the approval broker |
+| Live screen + input | `krouchi_dz/remote.py` | Screen capture as an MJPEG stream and remote mouse/keyboard injection (Windows: GDI capture + SendInput, standard library only); coordinates are normalized so any phone resolution maps to the PC screen |
 
 ### Approval modes (per bot)
 
@@ -55,11 +60,11 @@ Only Python 3.10+ is required (standard library only).
 
 ```bash
 cd Krouchi_DZ
-python3 -m unittest discover -s tests -t . -v          # the engine (99) — GUI tests are skipped without a display
-xvfb-run -a python3 -m unittest discover -s tests -t . # everything: 122 tests (99 engine + 23 GUI)
+python3 -m unittest discover -s tests -t . -v          # GUI tests are skipped without a display
+xvfb-run -a python3 -m unittest discover -s tests -t . # everything: 260 tests
 ```
 
-Expected result: **99 passing engine tests** covering: database
+Expected result: **260 passing tests** covering: database
 round-trips, loading provider settings while respecting user edits,
 the OpenRouter/Gemini request shapes over a fake transport (no
 network), the chat engine with a mock provider (memory survives a
@@ -78,7 +83,12 @@ and the full remote-approval flow (a tool call appears in
 `/api/approvals`, a phone deny leaves the file unwritten, a phone
 approve writes it) — plus the i18n tests: string-table parity between
 Arabic and English, lookup fallbacks, and persistence of the chosen
-language.
+language — plus the task system (assignment, execution with approvals,
+cancellation, interruption at startup), the phone control surface
+(every endpoint behind the broker, the PC-side control switch), the
+remote screen/input core (coordinate mapping, input validation,
+MJPEG framing and deduplication), and the screen/input HTTP endpoints
+(token rules, the control gate, viewer counting).
 
 ## Using the engine (example)
 
@@ -270,6 +280,42 @@ its tools and its approval broker; the phone is a remote surface.
   least one was refused or timed out, otherwise `"approved"`. When no
   action was requested, the field is absent.
 
+## Tasks, full control and the live screen (v3.3.0)
+
+The phone is no longer only a chat surface:
+
+- **Bot tasks**: from the phone's Computer tab, assign a bot a task
+  (a title and instructions). The task runs on the PC for as long as
+  it takes — approvals inside it surface on the PC card or the phone
+  like chat approvals — and the phone follows its status and event
+  log, and can cancel it. The PC mirrors everything in its own
+  **Bot tasks** window. Disconnecting the phone never stops a task.
+- **Full control**: PC status, file browsing / download / upload,
+  printing to any installed printer, running commands, opening
+  programs and files, the clipboard in both directions, volume,
+  window management, the process list, and power (shutdown and
+  restart are double-confirmed and scheduled after 60 seconds; lock,
+  sleep and log off are immediate). Every sensitive action passes the
+  approval broker, and a switch in the PC's phone-link dialog
+  (**Full control from the phone**) turns the whole control family
+  off; tasks, chat and approvals are not gated by it.
+- **Live screen**: the PC screen streams to the phone (MJPEG,
+  ~10 fps on a home network); tap = click, long press = right click,
+  drag = move the pointer, with a drag-windows mode, wheel buttons,
+  a special-keys row, and text typing (Arabic included). While the
+  screen is shared, the PC's link dialog shows a red
+  "screen is being shared" indicator. The Windows lock screen cannot
+  be captured — the PC must be unlocked.
+- **Wake-on-LAN**: the Android app can wake the PC on the home
+  network (the PC's MAC address is entered once; the PC needs a
+  wired connection and Wake-on-LAN enabled in its BIOS and adapter
+  settings).
+- **From anywhere**: the companion server binds all interfaces, so
+  with Tailscale (a separate free program) on the PC and the phone,
+  the phone uses the PC's 100.x address — labeled "(Tailscale)" in
+  the link dialog — and everything above works from any network.
+  The PC must be on: when it is off, it is offline everywhere.
+
 ## Step 3: packages
 
 Delivered in **v0.3.0** (see Releases): a portable Windows package
@@ -280,6 +326,15 @@ its bots to the Android app over the local network, with approvals
 resolvable from the PC card or the phone; packages for Windows,
 Linux and macOS.
 
-**v3.0.0** (this release): a bilingual interface — Arabic and English
+**v3.0.0**: a bilingual interface — Arabic and English
 with a live language switch in the main window and a mirrored layout;
 packages for Windows, Linux and macOS.
+
+**v3.1.0**: the iPhone web app (PWA) — the same phone interface,
+served by GitHub Pages and by the PC itself, pairing with the PC
+companion server.
+
+**v3.3.0** (this release): bot tasks, full phone control of the PC,
+the live screen, Wake-on-LAN, and Tailscale labeling; packages for
+Windows, Android, iPhone (web app), Linux and macOS, with a full
+user guide in Arabic and English.
