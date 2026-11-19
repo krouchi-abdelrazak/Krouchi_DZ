@@ -21,11 +21,13 @@ _ApprovalBridge): الوسيط يسجّل الطلب وينتظر حسمه، و�
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import queue
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
+from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -33,6 +35,7 @@ from . import i18n
 from .broker import ApprovalRequest, PendingApprovals, request_summary
 from .engine import ChatEngine, default_data_dir
 from .i18n import t
+from .tasks import ACTIVE_STATUSES, FINAL_STATUSES, TaskStore
 from .server import (
     SETTING_AUTOSTART,
     SETTING_PORT,
@@ -50,6 +53,37 @@ BRIDGE_WAIT = 118.0     # انتظار الجسر لجواب الواجهة — 
 POLL_MS = 60            # دورة جسّ الطوابير في حلقة Tk (ملي ثانية)
 
 APPROVAL_MODES_ORDER = ("ask", "full", "readonly")
+
+# مفتاح إعداد «التحكم الكلي من الهاتف» وقيم تعطيله — كما يقرؤهما
+# server.CompanionServer.is_control_enabled حرفياً (افتراضيه مفعَّل).
+SETTING_CONTROL_ENABLED = "control_enabled"
+_CONTROL_OFF_VALUES = ("false", "0", "no", "off")
+
+# نطاق عناوين Tailscale (CGNAT): 100.64.0.0/10.
+_TAILSCALE_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
+def control_setting_enabled(raw) -> bool:
+    """يفسّر قيمة إعداد control_enabled بمنطق الخادم نفسه حرفياً.
+
+    غياب الإعداد (None) يعني الافتراضي «true» أي مفعَّل؛ والقيمة
+    معطِّلة فقط إن كانت — بعد التشذيب وخفض الأحرف — إحدى قيم الإيقاف.
+    """
+    if raw is None:
+        raw = "true"
+    return str(raw).strip().lower() not in _CONTROL_OFF_VALUES
+
+
+def ip_label(ip: str) -> str:
+    """العنوان كما يُعرض في قوائم العناوين: مع لاحقة " (Tailscale)"
+    إن كان ضمن نطاق Tailscale 100.64.0.0/10، وإلا العنوان نفسه."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if address in _TAILSCALE_NETWORK:
+        return f"{ip} (Tailscale)"
+    return ip
 
 
 # -- تسميات مترجمة (تُحسَب بلغة الواجهة الحالية عند كل استعمال) --------------
@@ -77,6 +111,12 @@ def decision_label(decision: str) -> str:
     """تسمية القرار بلغة الواجهة (الاسم نفسه إن كان غير معروف)."""
     key = f"decision.{decision}"
     return t(key) if i18n.has(key) else decision
+
+
+def task_status_label(status: str) -> str:
+    """تسمية حالة مهمة بلغة الواجهة (الحالة نفسها إن كانت غير معروفة)."""
+    key = f"taskstatus.{status}"
+    return t(key) if i18n.has(key) else status
 
 
 # -- مساعدات اتجاه التخطيط ----------------------------------------------------
@@ -157,20 +197,31 @@ class EngineRunner:
                 except Exception:
                     pass
                 return
-            job_id, fn = job
+            job_id, fn, direct = job
             try:
-                self._done.put((job_id, True, fn(engine)))
+                result = (job_id, True, fn(engine))
             except Exception as exc:
-                self._done.put((job_id, False, exc))
+                result = (job_id, False, exc)
+            if direct:
+                # تسليم مباشر في خيط المحرّك: ردّ النداء هنا لا يلمس
+                # الودجتات (يضبط حدثاً فقط) — انظر call_blocking.
+                callback = self._callbacks.pop(job_id, None)
+                if callback is not None:
+                    try:
+                        callback(result[1], result[2])
+                    except Exception:
+                        pass
+            else:
+                self._done.put(result)
 
     # -- إرسال المهام ------------------------------------------------------
-    def submit(self, fn, on_done=None) -> int:
+    def submit(self, fn, on_done=None, _direct: bool = False) -> int:
         with self._lock:
             self._counter += 1
             job_id = self._counter
         if on_done is not None:
             self._callbacks[job_id] = on_done
-        self._jobs.put((job_id, fn))
+        self._jobs.put((job_id, fn, _direct))
         return job_id
 
     def call(self, fn, timeout: float = 30.0):
@@ -200,9 +251,10 @@ class EngineRunner:
     def call_blocking(self, fn, timeout: float | None = None):
         """ينفّذ مهمة وينتظر نتيجتها دون جسّ الطابور بنفسه (لخيوط الخادم).
 
-        على خلاف call() لا يستدعي poll() إطلاقاً: تسليم الإتمام يحدث
-        عبر attach() في حلقة Tk، فلا يعمل إلا والواجهة حيّة. لا يلمس
-        أي ويدجت — آمن من أي خيط (يستعمله خادم مرافقة الهاتف).
+        على خلاف call() لا يستدعي poll() إطلاقاً: تُسلَّم نتيجته
+        مباشرة في خيط المحرّك (ردّ النداء يضبط حدثاً فقط ولا يلمس
+        أي ويدجت)، فيعمل من أي خيط حتى قبل أن تدور حلقة الواجهة —
+        آمن لخادم مرافقة الهاتف ولمهيّئاته التي تعمل عند الإقلاع.
         """
         event = threading.Event()
         holder: dict = {}
@@ -212,7 +264,7 @@ class EngineRunner:
             holder["value"] = value
             event.set()
 
-        self.submit(fn, _cb)
+        self.submit(fn, _cb, _direct=True)
         if not event.wait(timeout):
             raise TimeoutError(t("err.job_timeout"))
         if holder["ok"]:
@@ -859,6 +911,194 @@ class AuditWindow:
 
 
 # ======================================================================
+# نافذة مهام البوتات
+# ======================================================================
+class TasksWindow:
+    """مهام البوتات الخلفية من جدول tasks: قائمة وحالة وتفاصيل وإلغاء.
+
+    القراءة عبر EngineRunner: مهمة تفتح TaskStore على ملف قاعدة
+    المحرّك نفسه (اتصاله الخاص الآمن بين الخيوط، وقائمته تصل اسم
+    البوت من جدول bots) وتعيد الصفوف. والإلغاء يمرّ — عبر مهمة
+    Runner أيضاً — بمدير مهام الخادم نفسه (TaskManager.cancel، نقطة
+    الدخول التي تستعملها نقطة POST /api/tasks/<id>/cancel) حين يكون
+    متاحاً؛ فإن غاب (الخادم متوقّف فلا عمال أصلاً) يُختم الإلغاء في
+    المخزن مباشرة بمنطق فرع «في الانتظار» نفسه في TaskManager.cancel.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        runner: EngineRunner,
+        server: CompanionServer | None = None,
+    ):
+        self.runner = runner
+        self.server = server
+        self.rows_loaded = False
+        self.tasks: list[dict] = []
+        self._tasks_by_id: dict[int, dict] = {}
+
+        top = tk.Toplevel(parent)
+        self.top = top
+        top.title(t("tasks.title"))
+        top.transient(parent)
+        top.geometry("760x540")
+
+        columns = ("title", "bot", "status", "created")
+        self.tree = ttk.Treeview(top, columns=columns, show="headings")
+        for col, title, width in (
+            ("title", t("tasks.col_title"), 250),
+            ("bot", t("tasks.col_bot"), 120),
+            ("status", t("tasks.col_status"), 110),
+            ("created", t("tasks.col_created"), 180),
+        ):
+            self.tree.heading(col, text=title)
+            self.tree.column(col, width=width, anchor=_text_anchor())
+        self.tree.pack(fill="both", expand=True, padx=10, pady=(10, 4))
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.empty_label = tk.Label(
+            top, text="", anchor=_text_anchor(), fg="#757575"
+        )
+        self.empty_label.pack(fill="x", padx=10)
+
+        detail = tk.Frame(top)
+        detail.pack(fill="x", padx=10, pady=(4, 0))
+        self.prompt_text = self._detail_block(detail, t("tasks.prompt"), 0, 3)
+        self.result_text = self._detail_block(detail, t("tasks.result"), 1, 3)
+        self.error_text = self._detail_block(detail, t("tasks.error"), 2, 2)
+
+        buttons = tk.Frame(top)
+        buttons.pack(fill="x", padx=10, pady=10)
+        self.cancel_button = tk.Button(
+            buttons,
+            text=t("tasks.cancel"),
+            command=self.cancel_task,
+            state="disabled",
+        )
+        self.cancel_button.pack(side="left")
+        tk.Button(
+            buttons, text=t("common.refresh"), command=self.refresh
+        ).pack(side="right")
+        self.refresh()
+
+    @staticmethod
+    def _detail_block(parent, label: str, row: int, height: int) -> tk.Text:
+        tk.Label(parent, text=label, anchor=_text_anchor()).grid(
+            row=row * 2, column=0, sticky=_text_anchor(), pady=(4, 0)
+        )
+        widget = tk.Text(parent, height=height, wrap="word", state="disabled")
+        widget.grid(row=row * 2 + 1, column=0, sticky="ew")
+        parent.columnconfigure(0, weight=1)
+        return widget
+
+    @staticmethod
+    def _set_text(widget: tk.Text, value: str) -> None:
+        widget.config(state="normal")
+        widget.delete("1.0", "end")
+        if value:
+            widget.insert("1.0", value)
+        widget.config(state="disabled")
+
+    # -- القائمة ---------------------------------------------------------------
+    def refresh(self) -> None:
+        def job(engine):
+            store = TaskStore(engine.db.path)
+            try:
+                rows = store.list_tasks()
+            finally:
+                store.close()
+            names = {b["id"]: b["name"] for b in engine.db.list_bots()}
+            for row in rows:
+                if not row.get("bot_name"):
+                    row["bot_name"] = names.get(
+                        row["bot_id"], f"#{row['bot_id']}"
+                    )
+            return rows
+
+        def done(ok, rows):
+            if not ok:
+                return
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self.tasks = rows
+            self._tasks_by_id = {row["id"]: row for row in rows}
+            for row in rows:
+                self.tree.insert(
+                    "",
+                    "end",
+                    iid=str(row["id"]),
+                    values=(
+                        row["title"],
+                        row["bot_name"],
+                        task_status_label(row["status"]),
+                        row["created_at"],
+                    ),
+                )
+            self.empty_label.config(
+                text=t("tasks.empty") if not rows else ""
+            )
+            self.rows_loaded = True
+            self._on_select()
+
+        self.runner.submit(job, done)
+
+    # -- التحديد والتفاصيل -------------------------------------------------------
+    def _selected_task(self) -> dict | None:
+        selection = self.tree.selection()
+        if not selection:
+            return None
+        try:
+            task_id = int(selection[0])
+        except (TypeError, ValueError):
+            return None
+        return self._tasks_by_id.get(task_id)
+
+    def _on_select(self, _event=None) -> None:
+        task = self._selected_task()
+        self._set_text(self.prompt_text, (task or {}).get("prompt") or "")
+        self._set_text(self.result_text, (task or {}).get("result") or "")
+        self._set_text(self.error_text, (task or {}).get("error") or "")
+        active = task is not None and task["status"] in ACTIVE_STATUSES
+        self.cancel_button.config(state="normal" if active else "disabled")
+
+    # -- الإلغاء --------------------------------------------------------------------
+    def cancel_task(self) -> None:
+        task = self._selected_task()
+        if task is None or task["status"] not in ACTIVE_STATUSES:
+            return
+        task_id = task["id"]
+        manager = self.server.task_manager if self.server is not None else None
+
+        def job(engine):
+            if manager is not None:
+                # نقطة الدخول نفسها التي تستعملها نقطة الإلغاء في الخادم.
+                return manager.cancel(task_id)
+            store = TaskStore(engine.db.path)
+            try:
+                current = store.get_task(task_id)
+                if current is None:
+                    return "not_found"
+                if current["status"] in FINAL_STATUSES:
+                    return "final"
+                if store.set_status_if(task_id, ACTIVE_STATUSES, "cancelled"):
+                    store.update_task(
+                        task_id,
+                        finished_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    store.append_log(
+                        task_id, "cancelled", "أُلغيت من واجهة الحاسوب"
+                    )
+                    return "ok"
+                return "final"
+            finally:
+                store.close()
+
+        def done(ok, value):
+            self.refresh()
+
+        self.runner.submit(job, done)
+
+
+# ======================================================================
 # نافذة ربط الهاتف (خادم المرافقة)
 # ======================================================================
 class PhoneLinkDialog:
@@ -872,12 +1112,14 @@ class PhoneLinkDialog:
     def __init__(self, parent: tk.Misc, runner: EngineRunner, server: CompanionServer):
         self.runner = runner
         self.server = server
+        self._closed = False
+        self._screen_after: str | None = None
 
         top = tk.Toplevel(parent)
         self.top = top
         top.title(t("phone.title"))
         top.transient(parent)
-        top.geometry("580x470")
+        top.geometry("580x640")
 
         anchor = _text_anchor()
         justify = "right" if i18n.is_rtl() else "left"
@@ -904,6 +1146,22 @@ class PhoneLinkDialog:
             top, text="", anchor=anchor, justify=justify, fg="#1565c0"
         )
         self.address_label.pack(fill="x", padx=14)
+        tk.Label(
+            top,
+            text=t("phone.ts_hint"),
+            anchor=anchor,
+            justify=justify,
+            wraplength=545,
+            fg="#37474f",
+        ).pack(fill="x", padx=14)
+        self.screen_label = tk.Label(
+            top,
+            text="",
+            anchor=anchor,
+            font=("TkDefaultFont", 11, "bold"),
+            fg="#b71c1c",
+        )
+        self.screen_label.pack(fill="x", padx=14, pady=(6, 0))
 
         tk.Label(top, text=t("phone.token_label"), anchor=anchor).pack(
             fill="x", padx=14, pady=(10, 2)
@@ -941,6 +1199,18 @@ class PhoneLinkDialog:
             command=self._save_autostart,
             anchor=anchor,
         ).pack(fill="x", padx=14, pady=(6, 2))
+        self.control_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            top,
+            text=t("phone.control_toggle"),
+            variable=self.control_var,
+            command=self._save_control,
+            anchor=anchor,
+        ).pack(fill="x", padx=14, pady=(2, 2))
+        self.tasks_button = tk.Button(
+            top, text=t("phone.tasks_button"), command=self.open_tasks
+        )
+        self.tasks_button.pack(fill="x", padx=14, pady=(4, 2))
         tk.Label(
             top,
             text=t("phone.warning"),
@@ -950,8 +1220,11 @@ class PhoneLinkDialog:
             fg="#b71c1c",
         ).pack(fill="x", padx=14, pady=(6, 0))
 
+        top.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_status()
         self._load_autostart()
+        self._load_control()
+        self._refresh_screen_indicator()
 
     # -- عرض الحالة ---------------------------------------------------------
     def _refresh_status(self) -> None:
@@ -959,8 +1232,10 @@ class PhoneLinkDialog:
             self.status_label.config(text=t("phone.status_running"))
             addresses = lan_ips()
             if addresses:
+                # لاحقة ip_label هي " (Tailscale)" لعناوين Tailscale وفارغة لغيرها.
                 lines = "\n".join(
-                    f"http://{ip}:{self.server.port}" for ip in addresses
+                    f"http://{ip}:{self.server.port}" + ip_label(ip)[len(ip):]
+                    for ip in addresses
                 )
                 self.address_label.config(text=t("phone.addresses", lines=lines))
             else:
@@ -1022,6 +1297,76 @@ class PhoneLinkDialog:
             engine.db.set_setting(SETTING_AUTOSTART, value)
 
         self.runner.submit(job)
+
+    # -- التحكم الكلي من الهاتف -------------------------------------------------
+    def _load_control(self) -> None:
+        def job(engine):
+            return control_setting_enabled(
+                engine.db.get_setting(SETTING_CONTROL_ENABLED, "true")
+            )
+
+        def done(ok, value):
+            if ok:
+                self.control_var.set(bool(value))
+
+        self.runner.submit(job, done)
+
+    def _save_control(self) -> None:
+        # الكتابة بالقيمتين القانونيتين "true"/"false" اللتين يقرؤهما الخادم.
+        value = "true" if self.control_var.get() else "false"
+
+        def job(engine):
+            engine.db.set_setting(SETTING_CONTROL_ENABLED, value)
+
+        self.runner.submit(job)
+
+    # -- مهام البوتات --------------------------------------------------------------
+    def open_tasks(self) -> TasksWindow:
+        return TasksWindow(self.top, self.runner, self.server)
+
+    # -- مؤشّر مشاركة الشاشة ---------------------------------------------------------
+    def _refresh_screen_indicator(self) -> None:
+        """يُظهر «الشاشة مشتركة الآن» ما دام للخادم مشاهد بثّ حيّ.
+
+        يتجدّد كل ثانيتين ما دامت النافذة مفتوحة؛ الإغلاق (من بروتوكول
+        النافذة) يلغي التجدّد، وتدمير الويدجت من خارجه يوقفه بصمت.
+        """
+        try:
+            if not self.top.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        sharing = False
+        try:
+            sharing = (
+                self.server is not None and self.server.screen_viewers > 0
+            )
+        except Exception:
+            sharing = False
+        self.screen_label.config(
+            text=t("phone.screen_sharing") if sharing else ""
+        )
+        if self._closed:
+            return
+        try:
+            self._screen_after = self.top.after(
+                2000, self._refresh_screen_indicator
+            )
+        except tk.TclError:
+            pass
+
+    def _on_close(self) -> None:
+        self._closed = True
+        if self._screen_after is not None:
+            try:
+                self.top.after_cancel(self._screen_after)
+            except tk.TclError:
+                pass
+            self._screen_after = None
+        try:
+            self.top.destroy()
+        except tk.TclError:
+            pass
 
 
 # ======================================================================

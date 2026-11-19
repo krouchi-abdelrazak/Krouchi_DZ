@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id      INTEGER NOT NULL REFERENCES bots(id),
+    title       TEXT NOT NULL DEFAULT '',
+    prompt      TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'queued',
+    result      TEXT,
+    error       TEXT,
+    log         TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL,
+    started_at  TEXT,
+    finished_at TEXT
+);
 """
 
 APPROVAL_MODES = ("ask", "full", "readonly")

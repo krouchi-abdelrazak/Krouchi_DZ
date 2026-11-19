@@ -7,6 +7,9 @@
 ببوتات الحاسوب عبر سجلّ الموافقات المشترك نفسه —
 الإصدار الثالث: واجهة بلغتين (i18n.py) — العربية والإنجليزية،
 بتبديل فوري من النافذة نفسها واتجاه تخطيط معكوس بينهما.
+الإصدار 3.2: تحكّم الهاتف الكلي بالحاسوب (control.py: ملفات، أوامر،
+طاقة، طباعة، حافظة، رفع) ومهام بوتات خلفية طويلة (tasks.py)
+بمحرّكات مخصّصة وسجلّ الموافقات المشترك نفسه.
 """
 
 from .broker import (
@@ -26,7 +29,7 @@ from .discovery import (
     discover_models,
     normalize_base_url,
 )
-from .engine import ChatEngine, default_data_dir
+from .engine import ChatCancelled, ChatEngine, default_data_dir
 from .i18n import get_lang, is_rtl, set_lang, t
 from .providers import (
     ChatResult,
@@ -38,13 +41,15 @@ from .providers import (
     build_provider,
 )
 from .secrets import SecretsStore
+from .tasks import TaskManager, TaskStore
 
-__version__ = "3.1.1"
+__version__ = "3.3.0"
 
 __all__ = [
     "ApprovalBroker",
     "ApprovalRequest",
     "BrokerDecision",
+    "ChatCancelled",
     "ChatEngine",
     "ChatResult",
     "Database",
@@ -58,6 +63,8 @@ __all__ = [
     "ProviderConfig",
     "ProviderError",
     "SecretsStore",
+    "TaskManager",
+    "TaskStore",
     "ToolCall",
     "build_provider",
     "classify_kind",

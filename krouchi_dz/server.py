@@ -29,6 +29,31 @@
 - GET  /api/approvals            → {"pending": [{"id","bot_name","tool","summary","created"}]}
 - POST /api/approvals/<id> {"decision": "approve"|"deny"} → يحسم الطلب
 
+الإصدار 3.2 — التحكّم الكلي ومهام البوتات:
+- GET  /api/status               → حالة الحاسوب (نظام/قرص/ذاكرة/مدة تشغيل)
+- عائلة التحكّم (تُعطَّل كلها بإعداد control_enabled=false ← 403):
+  GET /api/files?path= · GET /api/file?path= · POST /api/run {command} ·
+  POST /api/open {target} · GET /api/screenshot · POST /api/power {action} ·
+  GET /api/printers · POST /api/print {path, printer?} ·
+  POST /api/upload {path, content_b64} · GET/POST /api/clipboard
+  أفعالها الكتابية تمرّ بوسيط الموافقات المشترك نفسه (باسم «تحكّم
+  الهاتف»)، والطاقة بقوة سؤال دائماً (force_ask) ولو بلا بوت.
+- المهام (لا يمسّها control_enabled):
+  POST /api/tasks {bot_id, title, prompt} → 201 ·
+  GET /api/tasks · GET /api/tasks/<id> · POST /api/tasks/<id>/cancel
+  تُنفَّذ بمحرّكات مخصّصة في الخلفية (tasks.py) وتشارك سجلّ الموافقات.
+
+الإصدار 3.3 — الشاشة الحية والإدخال عن بُعد (من عائلة التحكّم أيضاً):
+- GET  /api/screen/stream?w=&q=&fps= → بثّ سطح المكتب MJPEG
+  (multipart/x-mixed-replace; boundary=krouchiframe). هذا هو المسار
+  الوحيد الذي يقبل رمز الربط معاملَ استعلام ?token= إلى جانب
+  الترويسة — لأنه يُعرَض في عنصر <img> لا يستطيع ضبط الترويسات؛
+  كل النقاط الأخرى بالترويسة حصراً. عدد البثوث النشطة يظهر في
+  GET /api/status باسم "screen_viewers".
+- POST /api/input {حدث إدخال واحد} → حقن فأرة/مفاتيح/نص على
+  الحاسوب عبر remote.dispatch_input؛ حدث غير صالح = 400، ومنصّة
+  لا تدعم الالتقاط/الحقن = 501.
+
 دلالات الموافقة في /api/chat (قرار التصميم الموثّق):
 المحادثة تعمل على الحاسوب عبر محرّكه؛ فإذا طلب بوت بنمط ask إجراءً
 سُجّل الطلب في سجلّ الموافقات المعلّقة المشترك وبقيت المحادثة معلّقة
@@ -47,18 +72,23 @@ POST /api/approvals/<id> — أو تنتهي مهلة الوسيط (120 ثاني
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import queue
 import secrets
 import socket
+import subprocess
 import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from . import control, remote
 from .broker import PendingApprovals, request_summary
+from .tasks import TaskManager, TaskStore, task_detail, task_summary
 
 DEFAULT_PORT = 8765
 TOKEN_MIN_CHARS = 12
@@ -254,6 +284,7 @@ def _approval_summary(item) -> dict:
         "tool": request.action,
         "summary": request_summary(request),
         "created": item.created_at,
+        "task_id": request.task_id,
     }
 
 
@@ -276,6 +307,24 @@ class CompanionServer:
         host: str = "0.0.0.0",
         port: int = DEFAULT_PORT,
         pwa_dir: str | Path | None = None,
+        control_root: str | Path | None = None,
+        power_executor=None,
+        open_executor=None,
+        print_executor=None,
+        printer_lister=None,
+        clipboard_getter=None,
+        clipboard_setter=None,
+        volume_executor=None,
+        window_lister=None,
+        window_executor=None,
+        process_lister=None,
+        process_killer=None,
+        screen_source=None,
+        input_sink=None,
+        file_max_bytes: int = control.FILE_MAX_BYTES,
+        upload_max_bytes: int = control.UPLOAD_MAX_BYTES,
+        task_engine_factory=None,
+        task_workers: int = 2,
     ):
         if len(token or "") < TOKEN_MIN_CHARS:
             raise ValueError("رمز الربط قصير — 12 حرفاً على الأقل")
@@ -295,6 +344,40 @@ class CompanionServer:
             )
         else:
             self.pwa_dir = find_pwa_dir()
+        # -- تحكّم الهاتف بالحاسوب (الإصدار 3.2) -------------------------
+        # جذر التحكّم ومنفّذات المنصّة كلها قابلة للحقن (الاختبارات
+        # تستبدل الطباعة/الحافظة/الطاقة ببدائل وهمية فلا تلمس نظاماً).
+        self.control_root = (
+            Path(control_root).resolve()
+            if control_root is not None
+            else control.control_root()
+        )
+        self.power_executor = power_executor or control.default_power_executor
+        self.open_executor = open_executor or control.open_target
+        self.print_executor = print_executor or control.default_print_executor
+        self.printer_lister = printer_lister or control.list_printers
+        self.clipboard_getter = clipboard_getter or control.get_clipboard
+        self.clipboard_setter = clipboard_setter or control.set_clipboard
+        self.volume_executor = volume_executor or control.default_volume_executor
+        self.window_lister = window_lister or control.list_windows
+        self.window_executor = window_executor or control.default_window_executor
+        self.process_lister = process_lister or control.list_processes
+        self.process_killer = process_killer or control.default_process_killer
+        # -- الشاشة الحية والإدخال عن بُعد (الإصدار 3.3) ------------------
+        # مصدر الشاشة ومغرَز الإدخال (remote) يُنشآن كسولاً عند أول
+        # استعمال ويُخزّنان هنا؛ قابلان للحقن من الاختبارات ببدائل
+        # remote الوهمية (FakeScreenSource/FakeInputSink).
+        self.screen_source = screen_source
+        self.input_sink = input_sink
+        self._screen_lock = threading.Lock()
+        self._screen_viewers_count = 0
+        self.file_max_bytes = int(file_max_bytes)
+        self.upload_max_bytes = int(upload_max_bytes)
+        # -- مهام البوتات الخلفية ------------------------------------------
+        self._task_engine_factory = task_engine_factory
+        self._task_workers = int(task_workers)
+        self.task_store: TaskStore | None = None
+        self.task_manager: TaskManager | None = None
 
     # -- الحالة ---------------------------------------------------------
     @property
@@ -349,6 +432,120 @@ class CompanionServer:
                 "place a pwa folder next to the krouchi_dz package "
                 "to serve the web app."
             )
+        self._start_tasks()
+
+    # -- مهام البوتات الخلفية ------------------------------------------------
+    def _default_task_engine_factory(self):
+        """مصنع مهام افتراضي: محرّك جديد بنفس إعدادات محرّك المحادثة.
+
+        تُقرأ الإعدادات من المحرّك الرئيسي عبر بوّابته (مجلد البيانات،
+        ملف المزوّدين، النقل، مصنع المزوّدين، مهلة السؤال) فيرث كل
+        مهمةٍ المفاتيح والمزوّدين أنفسهم — مع سجلّ الموافقات المشترك
+        نفسه الذي يغذّي هذا الخادم.
+        """
+        registry = self.registry
+        engine_call = self.engine_call
+
+        def factory():
+            from .engine import ChatEngine
+
+            data_dir, providers_path, transport, provider_factory, timeout = (
+                engine_call(
+                    lambda e: (
+                        e.data_dir,
+                        e.providers_path,
+                        e.transport,
+                        e.provider_factory,
+                        e.broker.ask_timeout,
+                    )
+                )
+            )
+            return ChatEngine(
+                data_dir,
+                providers_path=providers_path,
+                ask_timeout=timeout,
+                transport=transport,
+                provider_factory=provider_factory,
+                approval_registry=registry,
+            )
+
+        return factory
+
+    def _start_tasks(self) -> None:
+        """يفتح مخزن المهام على قاعدة المحرّك ويشغّل المشغّل ومراقبه.
+
+        فشله لا يُسقط الخادم: تبقى بقية النقاط عاملة وتردّ نقاط
+        المهام 503 حتى يُصلَح السبب.
+        """
+        if self.task_manager is not None:
+            return
+        try:
+            db_path = self.engine_call(lambda e: str(e.db.path))
+            self.task_store = TaskStore(db_path)
+            factory = self._task_engine_factory or self._default_task_engine_factory()
+            self.task_manager = TaskManager(
+                self.task_store,
+                factory,
+                self.registry,
+                workers=self._task_workers,
+            )
+            self.task_manager.start()
+        except Exception as exc:
+            print(f"Krouchi_DZ companion server: tasks disabled: {exc}")
+            self.task_store = None
+            self.task_manager = None
+
+    # -- تحكّم الهاتف بالحاسوب -------------------------------------------------
+    def is_control_enabled(self) -> bool:
+        """إعداد control_enabled في قاعدة المحرّك (افتراضياً مفعَّل)."""
+        try:
+            value = self.engine_call(
+                lambda e: e.db.get_setting("control_enabled", "true")
+            )
+        except Exception:
+            return True  # تعذّرت القراءة — الافتراضي المعلن: مفعَّل
+        return str(value).strip().lower() not in ("false", "0", "no", "off")
+
+    def ask_control(
+        self, action: str, params: dict, force_ask: bool = False
+    ) -> bool:
+        """يسأل عن فعل تحكّم عبر وسيط المحرّك الرئيسي وسجلّه المشترك.
+
+        يمرّ عبر engine_call لأن الوسيط وسجلّ تدقيقه يعيشان على خيط
+        مالك المحرّك؛ الانتظار هنا يحجب بوّابة المحرّك كما تفعل
+        محادثة ask تماماً — سلوك متّسق مع بقية البرنامج.
+        """
+        decision = self.engine_call(
+            lambda e: e.authorize_control(action, params, force_ask=force_ask)
+        )
+        return bool(decision.allowed)
+
+    # -- الشاشة الحية والإدخال عن بُعد (الإصدار 3.3) -------------------------
+    def get_screen_source(self):
+        """مصدر الشاشة (remote): يُنشأ كسولاً عند أول استعمال ويُخزَّن."""
+        with self._screen_lock:
+            if self.screen_source is None:
+                self.screen_source = remote.create_screen_source()
+            return self.screen_source
+
+    def get_input_sink(self):
+        """مغرَز الإدخال (remote): يُنشأ كسولاً عند أول استعمال ويُخزَّن."""
+        with self._screen_lock:
+            if self.input_sink is None:
+                self.input_sink = remote.create_input_sink()
+            return self.input_sink
+
+    @property
+    def screen_viewers(self) -> int:
+        """عدد بثوث الشاشة النشطة الآن (يظهر في GET /api/status)."""
+        with self._screen_lock:
+            return self._screen_viewers_count
+
+    def _note_screen_stream(self, delta: int) -> None:
+        with self._screen_lock:
+            self._screen_viewers_count = max(
+                0, self._screen_viewers_count + delta
+            )
 
     # -- قشرة تطبيق الويب -------------------------------------------------
     def static_file(self, name: str) -> tuple[bytes, str] | None:
@@ -374,6 +571,15 @@ class CompanionServer:
         if httpd is not None:
             httpd.shutdown()
             httpd.server_close()
+        if self.task_manager is not None:
+            self.task_manager.stop()
+            self.task_manager = None
+        if self.task_store is not None:
+            try:
+                self.task_store.close()
+            except Exception:
+                pass
+            self.task_store = None
 
     # -- عمليات المحرّك (تُستدعى من معالج الطلبات) ---------------------------
     def list_bots(self) -> list[dict]:
@@ -521,9 +727,21 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._serve_static(path)
             return self._send_json(404, {"error": "مسار غير معروف"})
         if not self._srv.check_token(self.headers.get("X-Krouchi-Token")):
-            return self._send_json(
-                401, {"error": "رمز الربط مفقود أو غير صحيح"}
-            )
+            # الاستثناء الموثّق الوحيد من مصادقة الترويسة: بثّ الشاشة
+            # (GET /api/screen/stream) يُعرَض في عنصر <img> لا يستطيع
+            # ضبط الترويسات، فيُقبل رمز الربط معاملَ استعلام ?token=
+            # لهذا المسار وحده وبهذه الطريقة وحدها؛ كل النقاط الأخرى
+            # — وPOST على المسار نفسه ضمناً — بالترويسة حصراً.
+            query_token = None
+            if method == "GET" and path == "/api/screen/stream":
+                query_token = (
+                    urllib.parse.parse_qs(parsed.query).get("token")
+                    or [None]
+                )[0]
+            if not self._srv.check_token(query_token):
+                return self._send_json(
+                    401, {"error": "رمز الربط مفقود أو غير صحيح"}
+                )
         srv = self._srv
 
         if method == "GET" and path == "/api/ping":
@@ -608,4 +826,464 @@ class _Handler(BaseHTTPRequestHandler):
                 404, {"error": "طلب غير موجود أو حُسم سابقاً"}
             )
 
+        # ===== الإصدار 3.2: حالة الحاسوب =====
+        if method == "GET" and path == "/api/status":
+            from . import __version__  # متأخراً عمداً: يفكّ أي دورة استيراد
+
+            payload = control.system_status(__version__)
+            payload["screen_viewers"] = srv.screen_viewers  # الإصدار 3.3
+            return self._send_json(200, payload)
+
+        # ===== الإصدار 3.2: مهام البوتات (لا يمسّها control_enabled) =====
+        if path == "/api/tasks" or path.startswith("/api/tasks/"):
+            return self._route_tasks(method, path)
+
+        # ===== الإصدار 3.2: عائلة التحكّم (تُعطَّل بـ control_enabled) =====
+        if path in (
+            "/api/files", "/api/file", "/api/run", "/api/open",
+            "/api/screenshot", "/api/power", "/api/printers",
+            "/api/print", "/api/upload", "/api/clipboard",
+            "/api/volume", "/api/windows", "/api/window",
+            "/api/processes", "/api/process/kill",
+            "/api/screen/stream", "/api/input",
+        ):
+            if not srv.is_control_enabled():
+                return self._send_json(403, {"error": "control disabled"})
+            return self._route_control(method, path, parsed)
+
         return self._send_json(404, {"error": "مسار غير معروف"})
+
+    # -- مهام البوتات ---------------------------------------------------------
+    def _route_tasks(self, method: str, path: str) -> None:
+        srv = self._srv
+        if srv.task_manager is None or srv.task_store is None:
+            return self._send_json(503, {"error": "المهام غير متاحة"})
+        manager, store = srv.task_manager, srv.task_store
+
+        if method == "POST" and path == "/api/tasks":
+            try:
+                body = self._read_json_body()
+            except ValueError as exc:
+                return self._send_json(400, {"error": f"جسم غير صالح: {exc}"})
+            bot_id = body.get("bot_id")
+            if isinstance(bot_id, str) and bot_id.strip().lstrip("-").isdigit():
+                bot_id = int(bot_id)  # نفس تسامح /api/chat مع المعرّفات النصية
+            title = body.get("title")
+            prompt = body.get("prompt")
+            if (
+                not isinstance(bot_id, int)
+                or isinstance(bot_id, bool)
+                or not isinstance(title, str)
+                or not title.strip()
+                or not isinstance(prompt, str)
+                or not prompt.strip()
+            ):
+                return self._send_json(
+                    400,
+                    {"error": "الحقول المطلوبة: bot_id (رقم) و title و prompt"},
+                )
+            bot = srv.engine_call(lambda e: e.db.get_bot(bot_id))
+            if bot is None:
+                return self._send_json(404, {"error": "بوت غير موجود"})
+            task = manager.submit(bot_id, title.strip(), prompt)
+            return self._send_json(
+                201,
+                {
+                    "task": {
+                        "id": task["id"],
+                        "bot_id": task["bot_id"],
+                        "title": task["title"],
+                        "status": task["status"],
+                        "created_at": task["created_at"],
+                    }
+                },
+            )
+
+        if method == "GET" and path == "/api/tasks":
+            tasks = [task_summary(t) for t in store.list_tasks()]
+            return self._send_json(200, {"tasks": tasks})
+
+        rest = path[len("/api/tasks/"):]
+        parts = rest.split("/")
+        if not parts[0].isdigit():
+            return self._send_json(404, {"error": "مسار غير معروف"})
+        task_id = int(parts[0])
+
+        if method == "GET" and len(parts) == 1:
+            task = store.get_task(task_id)
+            if task is None:
+                return self._send_json(404, {"error": "مهمة غير موجودة"})
+            return self._send_json(200, {"task": task_detail(task)})
+
+        if method == "POST" and len(parts) == 2 and parts[1] == "cancel":
+            outcome = manager.cancel(task_id)
+            if outcome == "not_found":
+                return self._send_json(404, {"error": "مهمة غير موجودة"})
+            if outcome == "final":
+                return self._send_json(
+                    409, {"error": "المهمة منتهية أصلاً فلا تُلغى"}
+                )
+            return self._send_json(200, {"ok": True})
+
+        return self._send_json(404, {"error": "مسار غير معروف"})
+
+    # -- تحكّم الهاتف بالحاسوب ---------------------------------------------------
+    def _route_control(self, method: str, path: str, parsed) -> None:
+        srv = self._srv
+        root = srv.control_root
+        query = urllib.parse.parse_qs(parsed.query)
+
+        if method == "GET" and path == "/api/files":
+            raw = (query.get("path") or [""])[0]
+            target = control.resolve_within_root(root, raw)
+            if target is None:
+                return self._send_json(403, {"error": "المسار خارج جذر التحكّم"})
+            if not target.is_dir():
+                return self._send_json(404, {"error": "مجلد غير موجود"})
+            try:
+                payload = control.list_dir(root, target)
+            except OSError as exc:
+                return self._send_json(500, {"error": f"تعذّرت القراءة: {exc}"})
+            return self._send_json(200, payload)
+
+        if method == "GET" and path == "/api/file":
+            raw = (query.get("path") or [""])[0]
+            target = control.resolve_within_root(root, raw)
+            if target is None:
+                return self._send_json(403, {"error": "المسار خارج جذر التحكّم"})
+            if not target.is_file():
+                return self._send_json(404, {"error": "ملف غير موجود"})
+            size = target.stat().st_size
+            if size > srv.file_max_bytes:
+                return self._send_json(413, {"error": "الملف أكبر من الحدّ المسموح"})
+            try:
+                data = target.read_bytes()
+            except OSError as exc:
+                return self._send_json(500, {"error": f"تعذّرت القراءة: {exc}"})
+            return self._send_json(
+                200,
+                {
+                    "name": target.name,
+                    "size": size,
+                    "content_b64": base64.b64encode(data).decode("ascii"),
+                },
+            )
+
+        if method == "GET" and path == "/api/screenshot":
+            shot = control.take_screenshot()
+            if shot is None:
+                return self._send_json(
+                    501, {"error": "لقطة الشاشة غير متاحة على هذا النظام"}
+                )
+            data, fmt = shot
+            return self._send_json(
+                200,
+                {"image_b64": base64.b64encode(data).decode("ascii"), "format": fmt},
+            )
+
+        if method == "GET" and path == "/api/screen/stream":
+            return self._serve_screen_stream(query)
+
+        if method == "POST" and path == "/api/input":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            try:
+                size = srv.get_screen_source().size()
+            except RuntimeError as exc:
+                return self._send_json(501, {"error": str(exc)})
+            try:
+                result = remote.dispatch_input(
+                    srv.get_input_sink(), size, body
+                )
+            except ValueError as exc:  # حدث غير صالح — رسالة عربية من remote
+                return self._send_json(400, {"error": str(exc)})
+            except RuntimeError as exc:  # منصّة لا تدعم الحقن
+                return self._send_json(501, {"error": str(exc)})
+            return self._send_json(200, result)
+
+        if method == "GET" and path == "/api/printers":
+            return self._send_json(200, {"printers": srv.printer_lister()})
+
+        if method == "GET" and path == "/api/clipboard":
+            return self._send_json(200, {"text": srv.clipboard_getter()})
+
+        if method == "POST" and path == "/api/run":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            command = body.get("command")
+            if not isinstance(command, str) or not command.strip():
+                return self._send_json(400, {"error": "الحقل المطلوب: command"})
+            if not srv.ask_control("run_command", {"command": command}):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                proc = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=control.RUN_TIMEOUT,
+                )
+                return self._send_json(
+                    200,
+                    {
+                        "exit": proc.returncode,
+                        "stdout": (proc.stdout or "")[-control.OUTPUT_TAIL:],
+                        "stderr": (proc.stderr or "")[-control.OUTPUT_TAIL:],
+                        "timed_out": False,
+                    },
+                )
+            except subprocess.TimeoutExpired as exc:
+                out = exc.stdout if isinstance(exc.stdout, str) else ""
+                err = exc.stderr if isinstance(exc.stderr, str) else ""
+                return self._send_json(
+                    200,
+                    {
+                        "exit": None,
+                        "stdout": out[-control.OUTPUT_TAIL:],
+                        "stderr": err[-control.OUTPUT_TAIL:],
+                        "timed_out": True,
+                    },
+                )
+            except OSError as exc:
+                return self._send_json(502, {"error": f"تعذّر التنفيذ: {exc}"})
+
+        if method == "POST" and path == "/api/open":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            target = body.get("target")
+            if not isinstance(target, str) or not target.strip():
+                return self._send_json(400, {"error": "الحقل المطلوب: target"})
+            if not srv.ask_control("open_target", {"target": target}):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.open_executor(target)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"تعذّر الفتح: {exc}"})
+            return self._send_json(200, {"ok": True})
+
+        if method == "POST" and path == "/api/power":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            action = body.get("action")
+            if action not in control.POWER_ACTIONS:
+                return self._send_json(
+                    400,
+                    {"error": "action يجب أن تكون إحدى: "
+                     + "، ".join(control.POWER_ACTIONS)},
+                )
+            # الطاقة تُسأل دائماً — force_ask ولو كان السياق full
+            if not srv.ask_control("power", {"action": action}, force_ask=True):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.power_executor(action)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"تعذّر التنفيذ: {exc}"})
+            return self._send_json(
+                200,
+                {"ok": True, "scheduled_in_s": control.POWER_SCHEDULED_S[action]},
+            )
+
+        if method == "POST" and path == "/api/volume":
+            # الصوت غير مؤذٍّ: بلا وسيط موافقات (كرمز الربط وبوّابة التحكّم فقط)
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            action = body.get("action")
+            if action not in control.VOLUME_ACTIONS:
+                return self._send_json(
+                    400, {"error": "action يجب أن تكون up أو down أو mute"}
+                )
+            try:
+                srv.volume_executor(action)
+            except Exception as exc:
+                return self._send_json(
+                    501, {"error": f"تحكّم الصوت غير متاح: {exc}"}
+                )
+            return self._send_json(200, {"ok": True})
+
+        if method == "GET" and path == "/api/windows":
+            return self._send_json(200, {"windows": srv.window_lister()})
+
+        if method == "POST" and path == "/api/window":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            window_id = body.get("id")
+            if isinstance(window_id, str) and window_id.strip().lstrip("-").isdigit():
+                window_id = int(window_id)
+            action = body.get("action")
+            if (
+                not isinstance(window_id, int)
+                or isinstance(window_id, bool)
+                or action not in control.WINDOW_ACTIONS
+            ):
+                return self._send_json(
+                    400,
+                    {"error": "الحقول المطلوبة: id (رقم) و action "
+                     "(focus|minimize|maximize|close)"},
+                )
+            params = {"id": window_id, "action": action}
+            if not srv.ask_control("window_control", params):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.window_executor(window_id, action)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"تعذّر التحكّم بالنافذة: {exc}"})
+            return self._send_json(200, {"ok": True})
+
+        if method == "GET" and path == "/api/processes":
+            return self._send_json(200, {"processes": srv.process_lister()})
+
+        if method == "POST" and path == "/api/process/kill":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            pid = body.get("pid")
+            if isinstance(pid, str) and pid.strip().isdigit():
+                pid = int(pid)
+            if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+                return self._send_json(400, {"error": "الحقل المطلوب: pid (رقم موجب)"})
+            if not srv.ask_control("kill_process", {"pid": pid}):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.process_killer(pid)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"فشل إنهاء العملية: {exc}"})
+            return self._send_json(200, {"ok": True})
+
+        if method == "POST" and path == "/api/print":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            raw_path = body.get("path")
+            printer = body.get("printer")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                return self._send_json(400, {"error": "الحقل المطلوب: path"})
+            if printer is not None and not isinstance(printer, str):
+                return self._send_json(400, {"error": "printer يجب أن تكون نصاً"})
+            target = control.resolve_within_root(root, raw_path)
+            if target is None:
+                return self._send_json(403, {"error": "المسار خارج جذر التحكّم"})
+            if not target.is_file():
+                return self._send_json(404, {"error": "ملف غير موجود"})
+            params = {"path": str(target), "printer": printer or ""}
+            if not srv.ask_control("print_file", params):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.print_executor(str(target), printer)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"فشلت الطباعة: {exc}"})
+            return self._send_json(200, {"ok": True})
+
+        if method == "POST" and path == "/api/upload":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            raw_path = body.get("path")
+            content_b64 = body.get("content_b64")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                return self._send_json(400, {"error": "الحقل المطلوب: path"})
+            if not isinstance(content_b64, str):
+                return self._send_json(400, {"error": "الحقل المطلوب: content_b64"})
+            target = control.resolve_within_root(root, raw_path)
+            if target is None:
+                return self._send_json(403, {"error": "المسار خارج جذر التحكّم"})
+            try:
+                data = base64.b64decode(content_b64, validate=True)
+            except (binascii.Error, ValueError):
+                return self._send_json(400, {"error": "content_b64 غير صالح"})
+            if len(data) > srv.upload_max_bytes:
+                return self._send_json(413, {"error": "الملف أكبر من الحدّ المسموح"})
+            params = {"path": str(target), "size": len(data)}
+            if not srv.ask_control("upload_file", params):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            except OSError as exc:
+                return self._send_json(500, {"error": f"تعذّرت الكتابة: {exc}"})
+            return self._send_json(200, {"ok": True, "size": len(data)})
+
+        if method == "POST" and path == "/api/clipboard":
+            body, error = self._body_or_400()
+            if error is not None:
+                return error
+            text = body.get("text")
+            if not isinstance(text, str):
+                return self._send_json(400, {"error": "الحقل المطلوب: text"})
+            if not srv.ask_control("set_clipboard", {"text": text}):
+                return self._send_json(403, {"error": "denied"})
+            try:
+                srv.clipboard_setter(text)
+            except Exception as exc:
+                return self._send_json(502, {"error": f"تعذّر ضبط الحافظة: {exc}"})
+            return self._send_json(200, {"ok": True})
+
+        return self._send_json(404, {"error": "مسار غير معروف"})
+
+    def _body_or_400(self):
+        """يقرأ جسم JSON أو يرسل 400 — يعيد (body, None) أو (None, None بعد الإرسال)."""
+        try:
+            return self._read_json_body(), None
+        except ValueError as exc:
+            self._send_json(400, {"error": f"جسم غير صالح: {exc}"})
+            return None, True
+
+    def _serve_screen_stream(self, query) -> None:
+        """بثّ شاشة الحاسوب إلى الهاتف: MJPEG بأجزاء multipart متتابعة.
+
+        معاملات الاستعلام: w (أقصى عرض، 1280 افتراضياً، بين 320
+        و1920)، q (جودة JPEG، 60، بين 30 و90)، fps (‏10، بين 1
+        و20). مصدر غير مدعوم على هذه المنصّة = 501 قبل بدء البث.
+        إغلاق الهاتف للاتصال نهاية طبيعية صامتة؛ وعدّاد المشاهدين
+        على الخادم يُرفع عند البدء ويُخفَض في finally مهما حدث.
+        (سجلّ الطلبات صامت أصلاً في هذا المعالج — log_message فارغة.)
+        """
+        srv = self._srv
+
+        def _param(name: str, default: int, low: int, high: int) -> int:
+            raw = (query.get(name) or [""])[0]
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                value = default
+            return max(low, min(high, value))
+
+        max_width = _param("w", 1280, 320, 1920)
+        quality = _param("q", 60, 30, 90)
+        fps = _param("fps", 10, 1, 20)
+        source = srv.get_screen_source()
+        try:
+            source.size()  # فحص قدرة فعلي قبل أي ترويسة: غير المدعوم = 501
+        except RuntimeError as exc:
+            return self._send_json(501, {"error": str(exc)})
+        boundary = remote.DEFAULT_BOUNDARY.decode("ascii")
+        self.send_response(200)
+        self.send_header(
+            "Content-Type", f"multipart/x-mixed-replace; boundary={boundary}"
+        )
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        srv._note_screen_stream(+1)
+        interval = 1.0 / fps
+        try:
+            for frame in remote.iter_mjpeg_frames(
+                source, max_width=max_width, quality=quality
+            ):
+                started = time.monotonic()
+                self.wfile.write(remote.mjpeg_part(frame))
+                self.wfile.flush()
+                delay = interval - (time.monotonic() - started)
+                if delay > 0:
+                    time.sleep(delay)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # أغلق الهاتف البث — نهاية طبيعية صامتة
+        except RuntimeError:
+            pass  # تعطّل المصدر أثناء البث: لا خطأ يُرسل بعد الترويسات
+        finally:
+            srv._note_screen_stream(-1)

@@ -39,6 +39,14 @@ MAX_FILE_CHARS = 200_000     # حدّ حجم القراءة المعادة لل�
 COMMAND_TIMEOUT = 30.0       # مهلة تنفيذ أمر واحد (ثوانٍ)
 
 
+class ChatCancelled(Exception):
+    """أُلغيت المحادثة تعاونياً: رفعها send_message حين يطلب should_cancel.
+
+    يستعملها مشغّل المهام (tasks.py) لإيقاف مهمة قيد التنفيذ بين
+    الجولات دون قتل الخيط؛ المحادثة العادية لا تصادفها إطلاقاً.
+    """
+
+
 def default_data_dir() -> Path:
     """مجلد البيانات الافتراضي: ~/.krouchi_dz (محلي أولاً)."""
     return Path.home() / ".krouchi_dz"
@@ -285,8 +293,23 @@ class ChatEngine:
         conv_id = self.db.get_or_create_conversation(bot_id)
         return self.db.get_messages(conv_id)
 
-    def send_message(self, bot_id: int, text: str) -> str:
-        """يرسل رسالة لبوت ويعيد ردّه النهائي (مع حلقة أدوات عند الحاجة)."""
+    def send_message(
+        self,
+        bot_id: int,
+        text: str,
+        should_cancel=None,
+        on_event=None,
+        task_id: int | None = None,
+    ) -> str:
+        """يرسل رسالة لبوت ويعيد ردّه النهائي (مع حلقة أدوات عند الحاجة).
+
+        المعاملات الإضافية اختيارية وسلوك غيابها هو السلوك القائم حرفياً:
+        - should_cancel: دالة بلا معاملات تُستشار بين الجولات وقبل كل
+          أداة؛ إن أعادت True رُفعت ChatCancelled (إلغاء تعاوني).
+        - on_event: ردّ نداء (kind, text) يتلقّى أحداث التنفيذ (أدوات…)
+          — يستعمله مشغّل المهام لبناء سجلّ المهمة.
+        - task_id: سياق مهمة مالكة، يُحمل إلى طلبات الموافقة.
+        """
         bot = self.db.get_bot(bot_id)
         if bot is None:
             raise ValueError(f"بوت غير موجود: {bot_id}")
@@ -294,6 +317,10 @@ class ChatEngine:
         model = bot["model"] or cfg.default_model
         provider = self._get_provider(bot["provider_name"])
         conv_id = self.db.get_or_create_conversation(bot_id)
+
+        def _check_cancel() -> None:
+            if should_cancel is not None and should_cancel():
+                raise ChatCancelled("أُلغيت المحادثة بطلب الإلغاء")
 
         messages: list[dict] = []
         if bot["system_prompt"]:
@@ -305,6 +332,7 @@ class ChatEngine:
         messages.append({"role": "user", "content": text})
 
         for _round in range(MAX_TOOL_ROUNDS + 1):
+            _check_cancel()
             result: ChatResult = provider.chat(messages, model, tools=TOOLS)
             if not result.tool_calls:
                 self.db.add_message(conv_id, "assistant", result.text)
@@ -320,7 +348,11 @@ class ChatEngine:
                 {"role": "assistant", "content": result.text, "tool_calls": api_calls}
             )
             for tc in result.tool_calls:
-                outcome = self.perform_action(bot_id, tc.name, tc.arguments)
+                _check_cancel()
+                outcome = self.perform_action(
+                    bot_id, tc.name, tc.arguments,
+                    task_id=task_id, on_event=on_event,
+                )
                 content = outcome["output"] if outcome["ok"] else outcome["error"]
                 self.db.add_message(
                     conv_id, "tool", content, tool_call_id=tc.id
@@ -333,14 +365,29 @@ class ChatEngine:
         return notice
 
     # -- تنفيذ الإجراءات عبر الوسيط ----------------------------------------
-    def perform_action(self, bot_id: int, action: str, params: dict | None = None) -> dict:
-        """يطلب تنفيذ إجراء عبر وسيط الموافقات؛ يعيد {ok, output|error}."""
+    def perform_action(
+        self,
+        bot_id: int,
+        action: str,
+        params: dict | None = None,
+        task_id: int | None = None,
+        on_event=None,
+    ) -> dict:
+        """يطلب تنفيذ إجراء عبر وسيط الموافقات؛ يعيد {ok, output|error}.
+
+        on_event (اختياري): يُبلَّغ بحدث «tool» قبل التنفيذ وبنتيجته
+        بعده — لبناء سجلّ المهام. task_id: سياق المهمة المالكة.
+        """
         params = params or {}
         bot = self.db.get_bot(bot_id)
         if bot is None:
             return {"ok": False, "error": f"بوت غير موجود: {bot_id}"}
-        decision = self.broker.authorize(bot, action, params)
+        if on_event is not None:
+            on_event("tool", action)
+        decision = self.broker.authorize(bot, action, params, task_id=task_id)
         if not decision.allowed:
+            if on_event is not None:
+                on_event("tool_denied", f"{action}: {decision.reason}")
             return {"ok": False, "error": f"رُفض الإجراء ({decision.reason})"}
         try:
             if action == "read_file":
@@ -354,6 +401,22 @@ class ChatEngine:
         except Exception as exc:  # خطأ تنفيذ يُعاد للنموذج/المستخدم كنتيجة
             return {"ok": False, "error": f"فشل تنفيذ {action}: {exc}"}
         return {"ok": True, "output": output}
+
+    def authorize_control(
+        self, action: str, params: dict | None = None, force_ask: bool = False
+    ):
+        """موافقة على فعل تحكّم مباشر من الهاتف (بلا بوت مالك).
+
+        طلبات التحكّم (تشغيل أمر، فتح هدف، طاقة) تمرّ بالوسيط نفسه
+        وسجلّه المشترك، باسم «تحكّم الهاتف» ونمط ask — فتظهر في
+        /api/approvals وتحسمها أي واجهة كطلبات البوتات تماماً.
+        force_ask=True (للطاقة) يلغي أي اختصار نمط: السؤال واجب دائماً.
+        يعيد BrokerDecision.
+        """
+        bot = {"id": None, "name": "تحكّم الهاتف", "approval_mode": "ask"}
+        return self.broker.authorize(
+            bot, action, params or {}, force_ask=force_ask
+        )
 
     @staticmethod
     def _do_read_file(params: dict) -> str:
@@ -391,4 +454,4 @@ class ChatEngine:
 
 
 # تصدير مريح: اسم المحرّك بوصفه واجهة البرنامج.
-__all__ = ["ChatEngine", "default_data_dir", "MAX_TOOL_ROUNDS"]
+__all__ = ["ChatEngine", "ChatCancelled", "default_data_dir", "MAX_TOOL_ROUNDS"]

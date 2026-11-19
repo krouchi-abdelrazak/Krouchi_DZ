@@ -30,7 +30,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-ACTIONS = ("read_file", "write_file", "run_command")
+ACTIONS = (
+    "read_file", "write_file", "run_command", "open_target", "power",
+    "print_file", "upload_file", "set_clipboard",
+    "window_control", "kill_process",
+)
 READONLY_ALLOWED = ("read_file",)
 
 # أسباب القرارات (تُحفظ في سجلّ التدقيق وتظهر للمستخدم).
@@ -54,6 +58,10 @@ class ApprovalRequest:
     action: str
     params: dict = field(default_factory=dict)
     mode: str = "ask"
+    # سياق اختياري: معرّف المهمة (tasks) التي ينتمي إليها الطلب، إن وُجدت —
+    # يظهر في ملخّص المعلّق لتعرف الواجهات صاحب الطلب وتُظهر المهمة
+    # بحالة «بانتظار الموافقة». None لطلبات المحادثة والتحكّم المباشر.
+    task_id: int | None = None
 
 
 def request_summary(request: "ApprovalRequest") -> str:
@@ -72,6 +80,32 @@ def request_summary(request: "ApprovalRequest") -> str:
         return text
     if request.action == "run_command":
         return str(params.get("command", "؟"))
+    if request.action == "open_target":
+        return str(params.get("target", "؟"))
+    if request.action == "power":
+        labels = {
+            "shutdown": "إيقاف الحاسوب",
+            "restart": "إعادة تشغيل الحاسوب",
+            "lock": "قفل الحاسوب",
+            "sleep": "وضع الحاسوب في السكون",
+            "logoff": "تسجيل الخروج من الحاسوب",
+        }
+        return labels.get(str(params.get("action", "")), "فعل طاقة")
+    if request.action == "print_file":
+        text = str(params.get("path", "؟"))
+        if params.get("printer"):
+            text += f"\nالطابعة: {params['printer']}"
+        return text
+    if request.action == "upload_file":
+        return f"{params.get('path', '؟')} ({params.get('size', 0)} بايت)"
+    if request.action == "set_clipboard":
+        content = str(params.get("text", ""))
+        preview = content if len(content) <= 300 else content[:300] + "…"
+        return preview
+    if request.action == "window_control":
+        return f"نافذة {params.get('id', '؟')}: {params.get('action', '؟')}"
+    if request.action == "kill_process":
+        return f"إنهاء العملية {params.get('pid', '؟')}"
     return json.dumps(params, ensure_ascii=False)
 
 
@@ -234,9 +268,21 @@ class ApprovalBroker:
 
     # -- واجهة عامة ------------------------------------------------------
     def authorize(
-        self, bot: dict, action: str, params: dict | None = None
+        self,
+        bot: dict,
+        action: str,
+        params: dict | None = None,
+        *,
+        force_ask: bool = False,
+        task_id: int | None = None,
     ) -> BrokerDecision:
-        """يقرّر بشأن إجراء لبوت معيّن ويسجّل القرار في التدقيق."""
+        """يقرّر بشأن إجراء لبوت معيّن ويسجّل القرار في التدقيق.
+
+        force_ask: يتجاوز اختصارات الأنماط (full/readonly) ويسأل
+        المستخدم دائماً — لأفعال التحكّم الخطرة (كالطاقة) التي لا
+        يكفي فيها نمط البوت وحده. task_id: سياق المهمة المالكة
+        للطلب إن وُجدت، يُحمل إلى السجلّ المشترك.
+        """
         params = params or {}
         mode = (bot or {}).get("approval_mode", "ask")
         request = ApprovalRequest(
@@ -245,9 +291,12 @@ class ApprovalBroker:
             action=action,
             params=params,
             mode=mode,
+            task_id=task_id,
         )
         if action not in ACTIONS:
             decision = BrokerDecision(False, REASON_UNKNOWN_ACTION)
+        elif force_ask:
+            decision = self._ask_user(request)
         elif mode == "full":
             decision = BrokerDecision(True, REASON_FULL)
         elif mode == "readonly":
