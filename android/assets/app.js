@@ -48,6 +48,12 @@ var STRINGS = {
     label_pc_token: 'رمز الاقتران',
     ph_pc_token: 'رمز الاقتران من الحاسوب',
     btn_connect: 'اتصال',
+    label_pc_mac: 'عنوان MAC لبطاقة شبكة الحاسوب',
+    ph_pc_mac: 'AA:BB:CC:DD:EE:FF',
+    btn_pc_wake: 'إيقاظ الحاسوب',
+    pc_wake_sent: 'أُرسلت حزمة الإيقاظ إلى الحاسوب',
+    pc_wake_unsupported: 'الإيقاظ يعمل من تطبيق الأندرويد فقط، حين يكون الهاتف على شبكة البيت',
+    pc_wake_bad_mac: 'عنوان MAC غير صالح — الصيغة: AA:BB:CC:DD:EE:FF',
     pc_pending_approvals: 'الموافقات المعلّقة',
     pc_approvals_note: 'حين يطلب بوت على الحاسوب تنفيذ إجراء، يظهر طلبه هنا لتُوافق عليه أو ترفضه — وعدم الجواب يبقيه معلّقاً على الحاسوب.',
     pc_bots_title: 'بوتات الحاسوب',
@@ -55,7 +61,7 @@ var STRINGS = {
     btn_pc_back: 'عودة إلى بوتات الحاسوب',
     about_title: 'حول Krouchi_DZ',
     about_author: 'تأليف: كروشي عبد الرزاق',
-    about_p1: 'الإصدار 3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
+    about_p1: 'الإصدار 3.3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
     about_p2: 'وضعان: <b>مستقل على الهاتف</b> (إدخال API واكتشاف النماذج والمحادثة — لا أدوات ملفات ولا تشغيل أوامر على الهاتف)، و<b>مرافق للحاسوب</b> من تبويب «الحاسوب»: محادثة عبر بوتات الحاسوب، والموافقة على طلبات تنفيذه أو رفضها من هاتفك.',
     about_p3: 'مفاتيحك ومحادثاتك محفوظة في تخزين هذا التطبيق الخاص على هاتفك، ولا تغادر بياناتك الجهاز إلا إلى مزوّد النماذج الذي تختاره وبمفتاحك — أو إلى حاسوبك أنت عند استعمال الوضع المرافق.',
     label_language: 'اللغة',
@@ -121,7 +127,126 @@ var STRINGS = {
     btn_approve: '✅ موافقة',
     btn_deny: '⛔ رفض',
     toast_approved: 'أُرسلت الموافقة إلى الحاسوب',
-    toast_denied: 'أُرسل الرفض إلى الحاسوب'
+    toast_denied: 'أُرسل الرفض إلى الحاسوب',
+    pc_tasks_title: 'المهام',
+    label_task_bot: 'البوت المنفِّذ',
+    label_task_title: 'عنوان المهمة',
+    ph_task_title: 'مثال: لخّص ملفّ الملاحظات',
+    label_task_prompt: 'نصّ المهمة',
+    ph_task_prompt: 'اكتب ما تريد من البوت أن يفعله على الحاسوب…',
+    btn_task_create: 'إرسال المهمة إلى الحاسوب',
+    task_err_bot: 'اختر بوتاً من بوتات الحاسوب أولاً',
+    task_err_title: 'أدخل عنواناً للمهمة',
+    task_err_prompt: 'اكتب نصّ المهمة',
+    task_created: 'أُرسلت المهمة «{title}» إلى الحاسوب',
+    tasks_none: 'لا مهام بعد — أرسل أول مهمة من النموذج أعلاه.',
+    task_status_queued: 'في الانتظار',
+    task_status_running: 'قيد التنفيذ',
+    task_status_waiting_approval: 'بانتظار الموافقة',
+    task_status_done: 'تمّت',
+    task_status_failed: 'فشلت',
+    task_status_cancelled: 'أُلغيت',
+    task_status_unknown: 'حالة غير معروفة',
+    task_bot_line: 'البوت: {name}',
+    task_detail_prompt: 'نصّ المهمة',
+    task_detail_result: 'النتيجة',
+    task_detail_error: 'الخطأ',
+    task_detail_log: 'سجلّ التنفيذ',
+    task_log_empty: 'لا سجلّ بعد.',
+    btn_task_cancel: 'إلغاء المهمة',
+    btn_back_tasks: 'عودة إلى المهام',
+    btn_details: 'التفاصيل',
+    toast_task_cancelled: 'أُرسل طلب الإلغاء إلى الحاسوب',
+    pc_control_title: 'التحكّم بالحاسوب',
+    btn_refresh: 'تحديث',
+    status_hostname: 'اسم الحاسوب',
+    status_os: 'النظام',
+    status_platform: 'المنصّة',
+    status_version: 'إصدار Krouchi_DZ',
+    status_uptime: 'مدّة التشغيل',
+    status_disk: 'القرص',
+    status_disk_value: '{free} GB حرّ من أصل {total} GB',
+    status_ram: 'الذاكرة (RAM)',
+    status_ram_value: '{mb} MB',
+    size_bytes: '{n} بايت',
+    size_kb: '{n} KB',
+    size_mb: '{n} MB',
+    files_title: 'ملفّات الحاسوب',
+    btn_up: '⬆️ المجلد الأعلى',
+    files_empty: 'هذا المجلد فارغ.',
+    btn_open_folder: 'فتح',
+    btn_download: 'تنزيل',
+    toast_download_started: 'بدأ تنزيل «{name}»',
+    run_title: 'تشغيل أمر',
+    label_run_command: 'الأمر',
+    ph_run_command: 'الأمر المراد تشغيله على الحاسوب',
+    btn_run: 'تشغيل',
+    run_note: 'قد يطلب الحاسوب موافقتك قبل التنفيذ — يظهر الطلب في قسم «الموافقات المعلّقة» أعلاه أو على شاشة الحاسوب نفسه.',
+    run_running: 'جارٍ التنفيذ على الحاسوب…',
+    run_exit: 'رمز الخروج: {code}',
+    run_timed_out: 'انقضت مهلة التنفيذ',
+    err_denied: 'رفض الحاسوب التنفيذ — لم تتمّ الموافقة على الطلب',
+    open_title: 'فتح برنامج أو ملف أو رابط',
+    label_open_target: 'الهدف (اسم برنامج أو مسار أو رابط)',
+    ph_open_target: 'notepad أو https://…',
+    btn_open: 'فتح على الحاسوب',
+    toast_opened: 'أُرسل طلب الفتح إلى الحاسوب',
+    screenshot_title: 'لقطة شاشة الحاسوب',
+    btn_screenshot: 'التقط لقطة',
+    power_title: 'الطاقة',
+    btn_shutdown: 'إيقاف الحاسوب',
+    btn_restart: 'إعادة التشغيل',
+    btn_lock: 'قفل',
+    btn_sleep: 'نوم',
+    btn_logoff: 'تسجيل الخروج',
+    btn_confirm_action: 'متأكّد؟ اضغط مجدّداً للتأكيد',
+    power_scheduled: 'سيُنفَّذ الإجراء خلال {seconds} ثانية',
+    power_done: 'نُفِّذ الإجراء على الحاسوب',
+    printers_title: 'الطابعات',
+    label_printer: 'الطابعة',
+    printer_auto: 'الافتراضية على الحاسوب',
+    printer_default_suffix: ' (الافتراضية)',
+    printers_none: 'لا طابعات معرّفة على الحاسوب.',
+    btn_print: '🖨️ طباعة',
+    toast_print_sent: 'أُرسل «{name}» إلى الطباعة',
+    upload_title: 'رفع ملف إلى الحاسوب',
+    upload_note: 'يُحفظ الملف المرفوع في المجلد المعروض حالياً في متصفّح الملفّات أعلاه.',
+    upload_sending: 'جارٍ رفع «{name}»…',
+    upload_done: 'رُفع «{name}» إلى الحاسوب ({size})',
+    clipboard_title: 'حافظة الحاسوب',
+    ph_clipboard: 'نصّ الحافظة…',
+    btn_clip_get: 'جلب نصّ حافظة الحاسوب',
+    btn_clip_set: 'إرسال إلى حافظة الحاسوب',
+    clip_empty: 'حافظة الحاسوب فارغة.',
+    toast_clip_sent: 'أُرسل النصّ إلى حافظة الحاسوب',
+    volume_title: 'الصوت',
+    btn_vol_down: '🔉 خفض',
+    btn_vol_mute: '🔇 كتم',
+    btn_vol_up: '🔊 رفع',
+    toast_volume: 'أُرسل أمر الصوت إلى الحاسوب',
+    windows_title: 'النوافذ المفتوحة',
+    windows_none: 'لا نوافذ مفتوحة.',
+    btn_win_focus: 'تركيز',
+    btn_win_minimize: 'تصغير',
+    btn_win_maximize: 'تكبير',
+    btn_win_close: 'إغلاق',
+    toast_window_action: 'أُرسل إجراء النافذة إلى الحاسوب',
+    processes_title: 'العمليات',
+    processes_none: 'لا عمليات.',
+    proc_line: 'PID {pid} — {mem}',
+    btn_kill: 'إنهاء',
+    toast_kill_sent: 'أُرسل طلب إنهاء العملية إلى الحاسوب',
+    screen_title: 'شاشة الحاسوب الحية',
+    screen_note: 'بثّ مباشر لشاشة الحاسوب — المس الصورة للنقر، واضغط مطوّلاً للنقر الأيمن، واسحب لتحريك المؤشّر.',
+    btn_screen_start: 'بدء الشاشة',
+    btn_screen_stop: 'إيقاف',
+    btn_screen_drag: 'سحب النوافذ',
+    screen_err: 'تعذّر بدء بثّ الشاشة — تحقّق من الاتصال، ومن تفعيل التحكّم على الحاسوب ودعمه للبثّ.',
+    screen_input_failed: 'تعذّر إرسال الإدخال إلى الحاسوب',
+    label_screen_text: 'نصّ يُكتب على الحاسوب',
+    ph_screen_text: 'اكتب نصّاً ليُكتَب على الحاسوب…',
+    btn_screen_send_text: 'إرسال النص',
+    screen_keys_title: 'مفاتيح خاصة',
   },
   en: {
     app_tagline: 'Your personal agent on your phone — with your own keys',
@@ -157,6 +282,12 @@ var STRINGS = {
     label_pc_token: 'Pairing token',
     ph_pc_token: 'Pairing token from the computer',
     btn_connect: 'Connect',
+    label_pc_mac: 'PC network card MAC address',
+    ph_pc_mac: 'AA:BB:CC:DD:EE:FF',
+    btn_pc_wake: 'Wake the computer',
+    pc_wake_sent: 'Wake packet sent to the computer',
+    pc_wake_unsupported: 'Wake works from the Android app only, while the phone is on the home network',
+    pc_wake_bad_mac: 'Invalid MAC address — format: AA:BB:CC:DD:EE:FF',
     pc_pending_approvals: 'Pending approvals',
     pc_approvals_note: 'When a bot on the computer asks to execute an action, its request appears here for you to approve or deny — no answer leaves it pending on the computer.',
     pc_bots_title: 'Computer bots',
@@ -164,7 +295,7 @@ var STRINGS = {
     btn_pc_back: 'Back to computer bots',
     about_title: 'About Krouchi_DZ',
     about_author: 'By Krouchi Abderrazak',
-    about_p1: 'Version 3.0 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
+    about_p1: 'Version 3.3.0 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
     about_p2: 'Two modes: <b>standalone on the phone</b> (API entry, model discovery and chat — no file tools and no command execution on the phone), and a <b>computer companion</b> from the "Computer" tab: chat through the computer\'s bots, and approve or deny its execution requests from your phone.',
     about_p3: 'Your keys and conversations are stored in this app\'s private storage on your phone, and your data leaves the device only to the model provider you choose, with your own key — or to your own computer when using the companion mode.',
     label_language: 'Language',
@@ -230,7 +361,126 @@ var STRINGS = {
     btn_approve: '✅ Approve',
     btn_deny: '⛔ Deny',
     toast_approved: 'Approval sent to the computer',
-    toast_denied: 'Denial sent to the computer'
+    toast_denied: 'Denial sent to the computer',
+    pc_tasks_title: 'Tasks',
+    label_task_bot: 'Executing bot',
+    label_task_title: 'Task title',
+    ph_task_title: 'e.g. Summarize the notes file',
+    label_task_prompt: 'Task prompt',
+    ph_task_prompt: 'Write what you want the bot to do on the computer…',
+    btn_task_create: 'Send task to the computer',
+    task_err_bot: 'Pick one of the computer bots first',
+    task_err_title: 'Enter a title for the task',
+    task_err_prompt: 'Write the task prompt',
+    task_created: 'Task "{title}" sent to the computer',
+    tasks_none: 'No tasks yet — send your first task from the form above.',
+    task_status_queued: 'Queued',
+    task_status_running: 'Running',
+    task_status_waiting_approval: 'Waiting for approval',
+    task_status_done: 'Done',
+    task_status_failed: 'Failed',
+    task_status_cancelled: 'Cancelled',
+    task_status_unknown: 'Unknown status',
+    task_bot_line: 'Bot: {name}',
+    task_detail_prompt: 'Prompt',
+    task_detail_result: 'Result',
+    task_detail_error: 'Error',
+    task_detail_log: 'Execution log',
+    task_log_empty: 'No log entries yet.',
+    btn_task_cancel: 'Cancel task',
+    btn_back_tasks: 'Back to tasks',
+    btn_details: 'Details',
+    toast_task_cancelled: 'Cancellation request sent to the computer',
+    pc_control_title: 'Computer control',
+    btn_refresh: 'Refresh',
+    status_hostname: 'Computer name',
+    status_os: 'System',
+    status_platform: 'Platform',
+    status_version: 'Krouchi_DZ version',
+    status_uptime: 'Uptime',
+    status_disk: 'Disk',
+    status_disk_value: '{free} GB free of {total} GB',
+    status_ram: 'Memory (RAM)',
+    status_ram_value: '{mb} MB',
+    size_bytes: '{n} B',
+    size_kb: '{n} KB',
+    size_mb: '{n} MB',
+    files_title: 'Computer files',
+    btn_up: '⬆️ Parent folder',
+    files_empty: 'This folder is empty.',
+    btn_open_folder: 'Open',
+    btn_download: 'Download',
+    toast_download_started: 'Download of "{name}" started',
+    run_title: 'Run a command',
+    label_run_command: 'Command',
+    ph_run_command: 'Command to run on the computer',
+    btn_run: 'Run',
+    run_note: 'The computer may ask for your approval before running — the request appears in the "Pending approvals" section above or on the computer screen itself.',
+    run_running: 'Running on the computer…',
+    run_exit: 'Exit code: {code}',
+    run_timed_out: 'Execution timed out',
+    err_denied: 'The computer denied the action — the request was not approved',
+    open_title: 'Open a program, file or link',
+    label_open_target: 'Target (program name, path or URL)',
+    ph_open_target: 'notepad or https://…',
+    btn_open: 'Open on the computer',
+    toast_opened: 'Open request sent to the computer',
+    screenshot_title: 'Computer screenshot',
+    btn_screenshot: 'Take a screenshot',
+    power_title: 'Power',
+    btn_shutdown: 'Shut down',
+    btn_restart: 'Restart',
+    btn_lock: 'Lock',
+    btn_sleep: 'Sleep',
+    btn_logoff: 'Log off',
+    btn_confirm_action: 'Are you sure? Tap again to confirm',
+    power_scheduled: 'The action will run in {seconds} seconds',
+    power_done: 'The action was carried out on the computer',
+    printers_title: 'Printers',
+    label_printer: 'Printer',
+    printer_auto: 'The computer\'s default',
+    printer_default_suffix: ' (default)',
+    printers_none: 'No printers defined on the computer.',
+    btn_print: '🖨️ Print',
+    toast_print_sent: '"{name}" sent to print',
+    upload_title: 'Upload a file to the computer',
+    upload_note: 'The uploaded file is saved in the folder currently shown in the file browser above.',
+    upload_sending: 'Uploading "{name}"…',
+    upload_done: '"{name}" uploaded to the computer ({size})',
+    clipboard_title: 'Computer clipboard',
+    ph_clipboard: 'Clipboard text…',
+    btn_clip_get: 'Fetch the computer\'s clipboard',
+    btn_clip_set: 'Send to the computer\'s clipboard',
+    clip_empty: 'The computer\'s clipboard is empty.',
+    toast_clip_sent: 'Text sent to the computer clipboard',
+    volume_title: 'Volume',
+    btn_vol_down: '🔉 Down',
+    btn_vol_mute: '🔇 Mute',
+    btn_vol_up: '🔊 Up',
+    toast_volume: 'Volume command sent to the computer',
+    windows_title: 'Open windows',
+    windows_none: 'No open windows.',
+    btn_win_focus: 'Focus',
+    btn_win_minimize: 'Minimize',
+    btn_win_maximize: 'Maximize',
+    btn_win_close: 'Close',
+    toast_window_action: 'Window action sent to the computer',
+    processes_title: 'Processes',
+    processes_none: 'No processes.',
+    proc_line: 'PID {pid} — {mem}',
+    btn_kill: 'End task',
+    toast_kill_sent: 'Kill request sent to the computer',
+    screen_title: 'Live computer screen',
+    screen_note: 'A live stream of the computer screen — tap the picture to click, long-press for a right click, drag to move the pointer.',
+    btn_screen_start: 'Start screen',
+    btn_screen_stop: 'Stop',
+    btn_screen_drag: 'Drag windows',
+    screen_err: 'Could not start the screen stream — check the connection, and that control is enabled and streaming is supported on the computer.',
+    screen_input_failed: 'Could not send the input to the computer',
+    label_screen_text: 'Text to type on the computer',
+    ph_screen_text: 'Type text to be typed on the computer…',
+    btn_screen_send_text: 'Send text',
+    screen_keys_title: 'Special keys',
   }
 };
 
@@ -580,14 +830,30 @@ var LS_PC = 'krouchi.pc.v1';
 var PC_DEFAULT_PORT = 8765;
 /* مهلة قراءة محادثة الحاسوب: الردّ قد ينتظر موافقة على الحاسوب */
 var PC_CHAT_TIMEOUT_MS = 170000;
+/* مهلة تشغيل أمر على الحاسوب: قد ينتظر موافقة قبل التنفيذ */
+var PC_RUN_TIMEOUT_MS = 180000;
 
 var ERR_PC_UNREACHABLE = STRINGS.ar.err_pc_unreachable;
 var ERR_PC_TOKEN = STRINGS.ar.err_pc_token;
 var ERR_PC_NOTAPP = STRINGS.ar.err_pc_notapp;
 var ERR_PC_SHAPE = STRINGS.ar.err_pc_shape;
+var ERR_PC_DENIED = STRINGS.ar.err_denied;
+
+/* تطبيع عنوان MAC: يقبل AA:BB:CC:DD:EE:FF أو AA-BB-CC-DD-EE-FF
+ * أو 12 رقماً سداسياً متصلاً (بأي حالة أحرف)؛ يعيد الصيغة القانونية
+ * بأحرف كبيرة مفصولة بنقطتين، أو null عند أي صيغة غير صالحة */
+function normalizeMac(mac) {
+  if (mac == null) return null;
+  var hex = String(mac).trim().replace(/[:\-\s]/g, '');
+  if (!/^[0-9A-Fa-f]{12}$/.test(hex)) return null;
+  hex = hex.toUpperCase();
+  var parts = [];
+  for (var i = 0; i < 12; i += 2) parts.push(hex.substr(i, 2));
+  return parts.join(':');
+}
 
 function defaultPcConfig() {
-  return { host: '', port: PC_DEFAULT_PORT, token: '' };
+  return { host: '', port: PC_DEFAULT_PORT, token: '', mac: '' };
 }
 
 function normalizePcConfig(cfg) {
@@ -597,7 +863,8 @@ function normalizePcConfig(cfg) {
   return {
     host: String(cfg.host == null ? '' : cfg.host).trim(),
     port: port,
-    token: String(cfg.token == null ? '' : cfg.token).trim()
+    token: String(cfg.token == null ? '' : cfg.token).trim(),
+    mac: normalizeMac(cfg.mac) || ''
   };
 }
 
@@ -649,9 +916,7 @@ function buildPcRequest(cfg, method, path, bodyObj) {
 
 function pcChatBody(botId, text) {
   /* معرّف البوت قد يصل نصّاً من خاصية HTML (getAttribute) — يُحوَّل إلى رقم */
-  var id = botId;
-  if (typeof id === 'string' && /^-?\d+$/.test(id.trim())) id = Number(id);
-  return { bot_id: id, text: text };
+  return { bot_id: coerceNumericId(botId), text: text };
 }
 
 function pcDecisionBody(decision) {
@@ -670,6 +935,14 @@ function pcRequest(cfg, method, path, bodyObj, timeoutMs, transport) {
           t('err_pc_unreachable') + (res.error ? ' (' + res.error + ')' : ''));
       }
       if (res.status === 401 || res.status === 403) {
+        var denied403 = false;
+        if (res.status === 403 && res.text) {
+          try {
+            var parsed403 = JSON.parse(res.text);
+            denied403 = !!(parsed403 && parsed403.error === 'denied');
+          } catch (e) { denied403 = false; }
+        }
+        if (denied403) throw discError('denied', t('err_denied'));
         throw discError('auth', t('err_pc_token'));
       }
       if (res.status < 200 || res.status >= 300) {
@@ -747,6 +1020,390 @@ function parsePcChatReply(data) {
   return data.reply;
 }
 
+/* ================= المهام والتحكّم الكلّي (v3.2): دوال نقية =================
+ * عقد الخادم الإضافي (نفس pcRequest ورمز الاقتران):
+ *   GET  /api/status                  → حالة الحاسوب
+ *   GET  /api/files?path=             → قائمة مجلد
+ *   GET  /api/file?path=              → ملف مشفّراً بـ Base64
+ *   POST /api/run {command}           → {exit, stdout, stderr, timed_out}
+ *   POST /api/open {target}           → {ok}
+ *   GET  /api/screenshot              → {image_b64, format}
+ *   POST /api/power {action}          → {ok, scheduled_in_s}
+ *   GET  /api/printers                → {printers:[{name, is_default}]}
+ *   POST /api/print {path, printer?}  → {ok}   (قد يُرفَض 403 denied)
+ *   POST /api/upload {path, content_b64} → {ok, size}  (قد يُرفَض)
+ *   GET  /api/clipboard               → {text}
+ *   POST /api/clipboard {text}        → {ok}   (قد يُرفَض)
+ *   POST /api/volume {action}         → {ok}
+ *   GET  /api/windows                 → {windows:[{id, title}]}
+ *   POST /api/window {id, action}     → {ok}   (قد يُرفَض)
+ *   GET  /api/processes               → {processes:[{pid, name, mem_mb}]}
+ *   POST /api/process/kill {pid}      → {ok}   (قد يُرفَض)
+ *   POST /api/tasks {bot_id, title, prompt} → {task:{…}}
+ *   GET  /api/tasks                   → {tasks:[…]}
+ *   GET  /api/tasks/<id>              → {task:{…, log:[…]}}
+ *   POST /api/tasks/<id>/cancel       → {ok}
+ */
+
+/* تحويل معرّف نصّي رقمي إلى رقم (يصل من خصائص HTML كنصّ دائماً) */
+function coerceNumericId(id) {
+  if (typeof id === 'string' && /^-?\d+$/.test(id.trim())) return Number(id);
+  return id;
+}
+
+/* ---------- المهام ---------- */
+var TASK_STATUSES = ['queued', 'running', 'waiting_approval', 'done', 'failed', 'cancelled'];
+
+function taskBody(botId, title, prompt) {
+  return {
+    bot_id: coerceNumericId(botId),
+    title: String(title == null ? '' : title),
+    prompt: String(prompt == null ? '' : prompt)
+  };
+}
+
+function normalizeTask(raw) {
+  if (!raw || typeof raw !== 'object' || raw.id == null) return null;
+  return {
+    id: String(raw.id),
+    bot_id: raw.bot_id == null ? '' : raw.bot_id,
+    bot_name: String(raw.bot_name || ''),
+    title: String(raw.title || ''),
+    status: String(raw.status || ''),
+    created_at: String(raw.created_at || ''),
+    started_at: String(raw.started_at || ''),
+    finished_at: String(raw.finished_at || '')
+  };
+}
+
+function parseTasks(data) {
+  var items = (data && typeof data === 'object') ? data.tasks : null;
+  if (!Array.isArray(items)) throw discError('bad_shape', t('err_pc_shape'));
+  var tasks = [];
+  items.forEach(function (raw) {
+    var task = normalizeTask(raw);
+    if (task) tasks.push(task);
+  });
+  return tasks;
+}
+
+function parseTaskDetail(data) {
+  var raw = (data && typeof data === 'object') ? data.task : null;
+  var task = normalizeTask(raw);
+  if (!task) throw discError('bad_shape', t('err_pc_shape'));
+  task.prompt = String(raw.prompt || '');
+  task.result = raw.result == null ? '' : String(raw.result);
+  task.error = raw.error == null ? '' : String(raw.error);
+  task.log = [];
+  var logItems = Array.isArray(raw.log) ? raw.log : [];
+  logItems.forEach(function (line) {
+    if (line && typeof line === 'object') {
+      task.log.push({
+        ts: String(line.ts || ''), kind: String(line.kind || ''),
+        text: String(line.text == null ? '' : line.text)
+      });
+    } else if (typeof line === 'string') {
+      task.log.push({ ts: '', kind: '', text: line });
+    }
+  });
+  return task;
+}
+
+function taskStatusKey(status) {
+  return TASK_STATUSES.indexOf(status) >= 0
+    ? 'task_status_' + status : 'task_status_unknown';
+}
+
+function taskStatusLabel(status) {
+  return t(taskStatusKey(status));
+}
+
+/* ---------- حالة الحاسوب ---------- */
+function parseStatus(data) {
+  if (!data || typeof data !== 'object') throw discError('bad_shape', t('err_pc_shape'));
+  var disk = null;
+  if (data.disk && typeof data.disk === 'object') {
+    disk = {
+      total_gb: Number(data.disk.total_gb) || 0,
+      free_gb: Number(data.disk.free_gb) || 0
+    };
+  }
+  return {
+    app: String(data.app || ''), version: String(data.version || ''),
+    os: String(data.os || ''), platform: String(data.platform || ''),
+    hostname: String(data.hostname || ''), home: String(data.home || ''),
+    uptime_s: Number(data.uptime_s) || 0,
+    disk: disk,
+    ram_mb: (typeof data.ram_mb === 'number') ? data.ram_mb : null
+  };
+}
+
+/* مدّة تشغيل مقروءة: 0:00:59 / 1:01:01 / 1d 1:01:01 (أرقام محايدة اللغة) */
+function formatUptime(seconds) {
+  var s = Math.floor(Number(seconds) || 0);
+  if (s < 0) s = 0;
+  var d = Math.floor(s / 86400);
+  s -= d * 86400;
+  var h = Math.floor(s / 3600);
+  s -= h * 3600;
+  var m = Math.floor(s / 60);
+  var sec = s - m * 60;
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  var core = h + ':' + p2(m) + ':' + p2(sec);
+  return d > 0 ? d + 'd ' + core : core;
+}
+
+function formatSize(bytes) {
+  var n = Number(bytes);
+  if (bytes == null || isNaN(n) || n < 0) return '';
+  if (n < 1024) return t('size_bytes', { n: Math.round(n) });
+  if (n < 1024 * 1024) return t('size_kb', { n: Math.round(n / 102.4) / 10 });
+  return t('size_mb', { n: Math.round(n / 10485.76) / 100 });
+}
+
+/* ---------- الملفّات ---------- */
+function parseFiles(data) {
+  if (!data || typeof data !== 'object' || !Array.isArray(data.entries)) {
+    throw discError('bad_shape', t('err_pc_shape'));
+  }
+  var entries = [];
+  data.entries.forEach(function (e) {
+    if (e && typeof e === 'object' && e.name != null && String(e.name) !== '') {
+      entries.push({
+        name: String(e.name),
+        kind: e.kind === 'dir' ? 'dir' : 'file',
+        size: (typeof e.size === 'number') ? e.size : null
+      });
+    }
+  });
+  return {
+    path: String(data.path || ''),
+    parent: data.parent == null ? null : String(data.parent),
+    entries: entries
+  };
+}
+
+/* وصل مسار مجلد باسم عنصر بفاصل المنصّة الظاهر في المسار نفسه */
+function joinRemotePath(dir, name) {
+  var d = String(dir == null ? '' : dir);
+  var n = String(name == null ? '' : name);
+  if (!d) return n;
+  var sep = d.indexOf('\\') >= 0 ? '\\' : '/';
+  return d.replace(/[\\/]+$/, '') + sep + n;
+}
+
+function parseFileDownload(data) {
+  if (!data || typeof data !== 'object' || typeof data.content_b64 !== 'string') {
+    throw discError('bad_shape', t('err_pc_shape'));
+  }
+  return {
+    name: String(data.name || ''),
+    size: (typeof data.size === 'number') ? data.size : null,
+    content_b64: data.content_b64
+  };
+}
+
+/* ---------- التشغيل والفتح والطاقة ---------- */
+function runBody(command) {
+  return { command: String(command == null ? '' : command) };
+}
+
+function parseRunResult(data) {
+  if (!data || typeof data !== 'object') throw discError('bad_shape', t('err_pc_shape'));
+  return {
+    exit: (typeof data.exit === 'number') ? data.exit : null,
+    stdout: String(data.stdout == null ? '' : data.stdout),
+    stderr: String(data.stderr == null ? '' : data.stderr),
+    timed_out: data.timed_out === true
+  };
+}
+
+function openBody(target) {
+  return { target: String(target == null ? '' : target) };
+}
+
+var POWER_ACTIONS = ['shutdown', 'restart', 'lock', 'sleep', 'logoff'];
+
+function powerBody(action) {
+  return { action: POWER_ACTIONS.indexOf(action) >= 0 ? action : 'shutdown' };
+}
+
+function parsePower(data) {
+  if (!data || typeof data !== 'object') throw discError('bad_shape', t('err_pc_shape'));
+  return {
+    ok: data.ok === true,
+    scheduled_in_s: (typeof data.scheduled_in_s === 'number') ? data.scheduled_in_s : null
+  };
+}
+
+/* ---------- لقطة الشاشة ---------- */
+function parseScreenshot(data) {
+  if (!data || typeof data !== 'object'
+      || typeof data.image_b64 !== 'string' || !data.image_b64) {
+    throw discError('bad_shape', t('err_pc_shape'));
+  }
+  return { image_b64: data.image_b64, format: String(data.format || 'png') };
+}
+
+function screenshotDataUri(shot) {
+  var fmt = String((shot && shot.format) || 'png')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!fmt) fmt = 'png';
+  return 'data:image/' + fmt + ';base64,' + (shot ? shot.image_b64 : '');
+}
+
+/* ---------- الطباعة والرفع والحافظة ---------- */
+function printBody(path, printer) {
+  var body = { path: String(path == null ? '' : path) };
+  var p = String(printer == null ? '' : printer).trim();
+  if (p) body.printer = p;
+  return body;
+}
+
+function parsePrinters(data) {
+  var items = (data && typeof data === 'object') ? data.printers : null;
+  if (!Array.isArray(items)) throw discError('bad_shape', t('err_pc_shape'));
+  var printers = [];
+  items.forEach(function (p) {
+    if (p && typeof p === 'object' && p.name != null && String(p.name) !== '') {
+      printers.push({ name: String(p.name), is_default: p.is_default === true });
+    }
+  });
+  return printers;
+}
+
+/* جسم الرفع: يفصل حمولة Base64 عن بادئة data: URL إن وُجدت */
+function uploadBody(path, dataUrl) {
+  var text = String(dataUrl == null ? '' : dataUrl);
+  var comma = text.indexOf(',');
+  var payload = comma >= 0 ? text.slice(comma + 1) : text;
+  return {
+    path: String(path == null ? '' : path),
+    content_b64: payload.replace(/\s+/g, '')
+  };
+}
+
+function clipboardBody(text) {
+  return { text: String(text == null ? '' : text) };
+}
+
+function parseClipboard(data) {
+  if (!data || typeof data !== 'object' || typeof data.text !== 'string') {
+    throw discError('bad_shape', t('err_pc_shape'));
+  }
+  return data.text;
+}
+
+/* ---------- الصوت والنوافذ والعمليات ---------- */
+function volumeBody(action) {
+  var known = ['up', 'down', 'mute'];
+  return { action: known.indexOf(action) >= 0 ? action : 'mute' };
+}
+
+function parseWindows(data) {
+  var items = (data && typeof data === 'object') ? data.windows : null;
+  if (!Array.isArray(items)) throw discError('bad_shape', t('err_pc_shape'));
+  var windows = [];
+  items.forEach(function (w) {
+    if (w && typeof w === 'object' && w.id != null) {
+      windows.push({ id: w.id, title: String(w.title || '') });
+    }
+  });
+  return windows;
+}
+
+function windowBody(id, action) {
+  var known = ['focus', 'minimize', 'maximize', 'close'];
+  return {
+    id: coerceNumericId(id),
+    action: known.indexOf(action) >= 0 ? action : 'focus'
+  };
+}
+
+function parseProcesses(data) {
+  var items = (data && typeof data === 'object') ? data.processes : null;
+  if (!Array.isArray(items)) throw discError('bad_shape', t('err_pc_shape'));
+  var processes = [];
+  items.forEach(function (p) {
+    if (p && typeof p === 'object' && p.pid != null && !isNaN(Number(p.pid))) {
+      processes.push({
+        pid: Number(p.pid),
+        name: String(p.name || ''),
+        mem_mb: (typeof p.mem_mb === 'number') ? p.mem_mb : null
+      });
+    }
+  });
+  return processes;
+}
+
+function killBody(pid) {
+  return { pid: coerceNumericId(pid) };
+}
+
+/* ---------- الشاشة الحية والإدخال عن بعد (v3.3) ----------
+ * عقد الخادم:
+ *   GET  /api/screen/stream?token=&w=&q=&fps= → بثّ MJPEG يُوضَع في <img>
+ *   POST /api/input {type, x, y, ...}         → {ok} حدث إدخال واحد
+ * الإحداثيات طبيعية 0..1 نسبةً إلى شاشة الحاسوب. */
+var PC_INPUT_TIMEOUT_MS = 15000;
+
+/* قصّ قيمة إلى المجال 0..1 (غير الرقمي → 0) */
+function clamp01(n) {
+  var v = Number(n);
+  if (isNaN(v)) return 0;
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/* رابط بثّ الشاشة من إعدادات الاتصال: الرمز في الاستعلام لأن عنصر
+ * <img> لا يستطيع إرسال ترويسة X-Krouchi-Token — مع ترميزه كاملاً. */
+function screenStreamUrl(pc, opts) {
+  opts = opts || {};
+  var w = Number(opts.w) || 1280;
+  var q = Number(opts.q) || 60;
+  var fps = Number(opts.fps) || 10;
+  return pcBaseUrl(pc) + '/api/screen/stream?token='
+    + encodeURIComponent(normalizePcConfig(pc).token)
+    + '&w=' + encodeURIComponent(w)
+    + '&q=' + encodeURIComponent(q)
+    + '&fps=' + encodeURIComponent(fps);
+}
+
+/* نقطة لمس/فأرة على الصورة → إحداثيات طبيعية 0..1 نسبةً إلى مستطيلها */
+function normPoint(clientX, clientY, rect) {
+  if (!rect || !(rect.width > 0) || !(rect.height > 0)) return { x: 0, y: 0 };
+  return {
+    x: clamp01((Number(clientX) - rect.left) / rect.width),
+    y: clamp01((Number(clientY) - rect.top) / rect.height)
+  };
+}
+
+function inputMouseBody(type, point, button) {
+  var known = ['mouse_move', 'mouse_down', 'mouse_up'];
+  var p = point || {};
+  return {
+    type: known.indexOf(type) >= 0 ? type : 'mouse_move',
+    x: clamp01(p.x), y: clamp01(p.y),
+    button: (button === 'right' || button === 'middle') ? button : 'left'
+  };
+}
+
+function inputWheelBody(point, delta) {
+  var p = point || {};
+  return {
+    type: 'wheel',
+    x: clamp01(p.x), y: clamp01(p.y),
+    delta: Math.round(Number(delta) || 0)
+  };
+}
+
+function inputKeyBody(key) {
+  return { type: 'key', key: String(key == null ? '' : key) };
+}
+
+function inputTextBody(text) {
+  return { type: 'text', text: String(text == null ? '' : text) };
+}
+
 /* مُستطلِع دوري قابل للحقن بمؤقّتات وهمية في الاختبارات:
  * يبدأ فوراً، ويمنع تزامن جولتين، ويتوقف نظيفاً. */
 function createPoller(options) {
@@ -806,17 +1463,40 @@ if (typeof module !== 'undefined' && module.exports) {
     ERR_PC_UNREACHABLE: ERR_PC_UNREACHABLE, ERR_PC_TOKEN: ERR_PC_TOKEN,
     ERR_PC_NOTAPP: ERR_PC_NOTAPP, ERR_PC_SHAPE: ERR_PC_SHAPE,
     PC_DEFAULT_PORT: PC_DEFAULT_PORT, PC_CHAT_TIMEOUT_MS: PC_CHAT_TIMEOUT_MS,
+    PC_RUN_TIMEOUT_MS: PC_RUN_TIMEOUT_MS, ERR_PC_DENIED: ERR_PC_DENIED,
     normalizeBaseUrl: normalizeBaseUrl, deriveName: deriveName,
     sanitizeName: sanitizeName, parseModelsOpenAI: parseModelsOpenAI,
     httpErrorFor: httpErrorFor, buildChatBody: buildChatBody,
     parseChatReply: parseChatReply,
     defaultPcConfig: defaultPcConfig, normalizePcConfig: normalizePcConfig,
+    normalizeMac: normalizeMac,
     loadPcConfig: loadPcConfig, savePcConfig: savePcConfig,
     pcBaseUrl: pcBaseUrl, pcHeaders: pcHeaders, buildPcRequest: buildPcRequest,
     pcChatBody: pcChatBody, pcDecisionBody: pcDecisionBody, pcRequest: pcRequest,
     parsePing: parsePing, parsePcBots: parsePcBots,
     parsePcHistory: parsePcHistory, parsePcApprovals: parsePcApprovals,
-    parsePcChatReply: parsePcChatReply, createPoller: createPoller
+    parsePcChatReply: parsePcChatReply, createPoller: createPoller,
+    coerceNumericId: coerceNumericId,
+    TASK_STATUSES: TASK_STATUSES, taskBody: taskBody,
+    parseTasks: parseTasks, parseTaskDetail: parseTaskDetail,
+    taskStatusKey: taskStatusKey, taskStatusLabel: taskStatusLabel,
+    parseStatus: parseStatus, formatUptime: formatUptime,
+    formatSize: formatSize, parseFiles: parseFiles,
+    joinRemotePath: joinRemotePath, parseFileDownload: parseFileDownload,
+    runBody: runBody, parseRunResult: parseRunResult, openBody: openBody,
+    POWER_ACTIONS: POWER_ACTIONS, powerBody: powerBody,
+    parsePower: parsePower, parseScreenshot: parseScreenshot,
+    screenshotDataUri: screenshotDataUri,
+    printBody: printBody, parsePrinters: parsePrinters,
+    uploadBody: uploadBody, clipboardBody: clipboardBody,
+    parseClipboard: parseClipboard,
+    volumeBody: volumeBody, parseWindows: parseWindows,
+    windowBody: windowBody, parseProcesses: parseProcesses,
+    killBody: killBody,
+    PC_INPUT_TIMEOUT_MS: PC_INPUT_TIMEOUT_MS,
+    screenStreamUrl: screenStreamUrl, normPoint: normPoint,
+    inputMouseBody: inputMouseBody, inputWheelBody: inputWheelBody,
+    inputKeyBody: inputKeyBody, inputTextBody: inputTextBody
   };
 }
 
@@ -861,6 +1541,14 @@ function applyLang() {
       el('pc-chat-title').textContent = t('pc_chat_with', { name: currentPcBot.name });
       renderPcChat();
     }
+    renderPcTasks(lastPcTasks);
+    if (currentTaskDetail && currentTaskDetail.title != null) renderTaskDetail();
+    renderPcStatus();
+    if (lastPcFiles) renderPcFiles();
+    renderPcPrinters();
+    if (pcWindowsLoaded) renderPcWindows();
+    if (pcProcessesLoaded) renderPcProcesses();
+    renderPowerButtons();
   }
 }
 
@@ -879,8 +1567,51 @@ function initApp() {
     renderChat();
   });
   el('pc-connect').addEventListener('click', onPcConnect);
+  el('pcWakeBtn').addEventListener('click', onPcWake);
   el('pc-chat-send').addEventListener('click', onPcChatSend);
   el('pc-chat-back').addEventListener('click', closePcChat);
+  el('task-create').addEventListener('click', onTaskCreate);
+  el('task-back').addEventListener('click', closeTaskDetail);
+  el('task-cancel').addEventListener('click', onTaskCancel);
+  el('status-refresh').addEventListener('click', function () {
+    refreshPcStatus();
+    if (pcFilesPath) loadPcFiles(pcFilesPath);
+  });
+  el('files-up').addEventListener('click', function () {
+    if (lastPcFiles && lastPcFiles.parent) loadPcFiles(lastPcFiles.parent);
+  });
+  el('upload-input').addEventListener('change', onUploadPick);
+  el('run-btn').addEventListener('click', onPcRun);
+  el('open-btn').addEventListener('click', onPcOpen);
+  el('shot-btn').addEventListener('click', onPcScreenshot);
+  el('clip-get').addEventListener('click', onClipGet);
+  el('clip-set').addEventListener('click', onClipSet);
+  el('vol-down').addEventListener('click', function () { onPcVolume('down'); });
+  el('vol-mute').addEventListener('click', function () { onPcVolume('mute'); });
+  el('vol-up').addEventListener('click', function () { onPcVolume('up'); });
+  el('windows-refresh').addEventListener('click', refreshPcWindows);
+  el('proc-refresh').addEventListener('click', refreshPcProcesses);
+  el('screen-start').addEventListener('click', startPcScreen);
+  el('screen-stop').addEventListener('click', stopPcScreen);
+  el('screen-drag').addEventListener('click', onScreenDragToggle);
+  el('screen-wheel-up').addEventListener('click', function () { onScreenWheel(1); });
+  el('screen-wheel-down').addEventListener('click', function () { onScreenWheel(-1); });
+  el('screen-send-text').addEventListener('click', onScreenSendText);
+  var screenImg = el('pcScreenImg');
+  screenImg.addEventListener('pointerdown', onScreenPointerDown);
+  screenImg.addEventListener('pointermove', onScreenPointerMove);
+  screenImg.addEventListener('pointerup', onScreenPointerUp);
+  screenImg.addEventListener('pointercancel', onScreenPointerCancel);
+  screenImg.addEventListener('error', onScreenImgError);
+  screenImg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.querySelectorAll('[data-screen-key]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      onScreenKey(btn.getAttribute('data-screen-key'));
+    });
+  });
+  POWER_ACTIONS.forEach(function (a) {
+    el(powerBtnId(a)).addEventListener('click', function () { onPcPower(a); });
+  });
   ['lang-select', 'lang-select-about'].forEach(function (id) {
     var sel = el(id);
     if (sel) sel.addEventListener('change', function () { setLang(sel.value); });
@@ -902,9 +1633,11 @@ function showTab(name) {
     if (pcConnected) {
       refreshPcBots();
       startPcApprovalsPolling();
+      startPcTasksPolling();
     }
   } else {
     stopPcApprovalsPolling();
+    stopPcTasksPolling();
   }
 }
 
@@ -1185,13 +1918,15 @@ function fillPcForm(cfg) {
   el('pc-host').value = cfg.host || '';
   el('pc-port').value = cfg.port || PC_DEFAULT_PORT;
   el('pc-token').value = cfg.token || '';
+  el('pcMac').value = cfg.mac || '';
 }
 
 function readPcForm() {
   return normalizePcConfig({
     host: el('pc-host').value,
     port: el('pc-port').value,
-    token: el('pc-token').value
+    token: el('pc-token').value,
+    mac: el('pcMac').value
   });
 }
 
@@ -1199,6 +1934,28 @@ function setPcStatus(msg, ok) {
   var box = el('pc-status');
   box.textContent = msg;
   box.className = 'status ' + (ok === true ? 'ok' : ok === false ? 'err' : '');
+}
+
+/* إيقاظ الحاسوب المنطفئ (Wake-on-LAN): يُقرأ العنوان من الحقل أو من
+ * الإعدادات المحفوظة، يُتحقق منه ويُحفظ بصيغته القانونية، ثم يُرسل عبر
+ * الجسر الأصيل في تطبيق الأندرويد؛ بلا جسر (متصفح/آيفون) تُعرض ملاحظة */
+function onPcWake() {
+  var mac = normalizeMac(el('pcMac').value) || normalizeMac(loadPcConfig().mac);
+  if (!mac) {
+    setPcStatus(t('pc_wake_bad_mac'), false);
+    return;
+  }
+  el('pcMac').value = mac;
+  var cfg = readPcForm();
+  cfg.mac = mac;
+  savePcConfig(cfg);
+  if (typeof window !== 'undefined' && window.KrouchiBridge &&
+      typeof window.KrouchiBridge.wol === 'function') {
+    window.KrouchiBridge.wol(mac);
+    setPcStatus(t('pc_wake_sent'), true);
+  } else {
+    setPcStatus(t('pc_wake_unsupported'), false);
+  }
 }
 
 function onPcConnect() {
@@ -1229,12 +1986,18 @@ function onPcConnect() {
       + (info.version ? t('pc_connected_version', { version: info.version }) : ''), true);
     refreshPcBots();
     startPcApprovalsPolling();
+    startPcTasksPolling();
+    refreshPcStatus();
+    refreshPcPrinters();
+    renderPowerButtons();
   }).catch(function (err) {
     btn.disabled = false;
     btn.textContent = t('btn_connect');
     pcConnected = false;
     el('pc-connected').style.display = 'none';
     stopPcApprovalsPolling();
+    stopPcTasksPolling();
+    stopPcScreen();
     setPcStatus(err.message || String(err), false);
   });
 }
@@ -1269,6 +2032,7 @@ function renderPcBots(bots) {
       openPcChat(btn.getAttribute('data-pc-chat'), btn.getAttribute('data-pc-name'));
     });
   });
+  fillTaskBotPicker();
 }
 
 /* ---------- محادثة الحاسوب ---------- */
@@ -1421,4 +2185,791 @@ function decidePcApproval(id, decision) {
     }).catch(function (err) {
       toast(err.message || String(err));
     });
+}
+/* ================= المهام (v3.2) ================= */
+var pcTasksPoller = null;
+var lastPcTasks = [];
+var currentTaskDetail = null;
+
+function setBoxStatus(id, msg, ok) {
+  var box = el(id);
+  if (!box) return;
+  box.textContent = msg;
+  box.className = 'status ' + (ok === true ? 'ok' : ok === false ? 'err' : '');
+}
+
+function taskBadgeClass(status) {
+  if (status === 'done') return 'badge ok';
+  if (status === 'failed' || status === 'waiting_approval') return 'badge err';
+  return 'badge';
+}
+
+function fillTaskBotPicker() {
+  var sel = el('task-bot');
+  if (!sel) return;
+  var current = sel.value;
+  sel.innerHTML = lastPcBots.map(function (b) {
+    return '<option value="' + escapeHtml(b.id) + '">' + escapeHtml(b.name) + '</option>';
+  }).join('');
+  if (current && lastPcBots.some(function (b) { return b.id === current; })) {
+    sel.value = current;
+  }
+}
+
+function refreshPcTasks() {
+  if (!pcConnected || !pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/tasks').then(function (data) {
+    renderPcTasks(parseTasks(data));
+  }).catch(function () { /* خطأ عابر: تبقى القائمة كما هي */ });
+}
+
+function startPcTasksPolling() {
+  if (pcTasksPoller || !pcConnected || !pcCfg) return;
+  pcTasksPoller = createPoller({
+    intervalMs: 4000,
+    task: function () {
+      return pcRequest(pcCfg, 'GET', '/api/tasks')
+        .then(function (data) {
+          renderPcTasks(parseTasks(data));
+          if (currentTaskDetail) {
+            return refreshTaskDetail(currentTaskDetail.id, true);
+          }
+          return null;
+        });
+    },
+    onResult: function () {},
+    onError: function () { /* خطأ عابر: نبقى على آخر حالة */ }
+  });
+  pcTasksPoller.start();
+}
+
+function stopPcTasksPolling() {
+  if (pcTasksPoller) {
+    pcTasksPoller.stop();
+    pcTasksPoller = null;
+  }
+}
+
+function renderPcTasks(tasks) {
+  lastPcTasks = tasks || [];
+  var box = el('pc-tasks-list');
+  if (!box) return;
+  if (!lastPcTasks.length) {
+    box.innerHTML = '<p class="muted">' + escapeHtml(t('tasks_none')) + '</p>';
+    return;
+  }
+  box.innerHTML = lastPcTasks.map(function (tk) {
+    return '<div class="card"><div class="card-title">' + escapeHtml(tk.title) + '</div>'
+      + '<div class="muted">'
+      + escapeHtml(t('task_bot_line', { name: tk.bot_name || t('approval_bot_fallback') }))
+      + '</div>'
+      + (tk.created_at
+        ? '<div class="muted">' + escapeHtml(tk.created_at) + '</div>' : '')
+      + '<div><span class="' + taskBadgeClass(tk.status) + '">'
+      + escapeHtml(taskStatusLabel(tk.status)) + '</span></div>'
+      + '<button data-task-open="' + escapeHtml(tk.id) + '">'
+      + escapeHtml(t('btn_details')) + '</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-task-open]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openTaskDetail(btn.getAttribute('data-task-open'));
+    });
+  });
+}
+
+function onTaskCreate() {
+  if (!pcCfg) return;
+  var botId = el('task-bot').value;
+  var title = el('task-title').value.trim();
+  var prompt = el('task-prompt').value.trim();
+  if (!botId) { setBoxStatus('task-status', t('task_err_bot'), false); return; }
+  if (!title) { setBoxStatus('task-status', t('task_err_title'), false); return; }
+  if (!prompt) { setBoxStatus('task-status', t('task_err_prompt'), false); return; }
+  var btn = el('task-create');
+  btn.disabled = true;
+  pcRequest(pcCfg, 'POST', '/api/tasks', taskBody(botId, title, prompt))
+    .then(function () {
+      btn.disabled = false;
+      setBoxStatus('task-status', t('task_created', { title: title }), true);
+      el('task-title').value = '';
+      el('task-prompt').value = '';
+      if (pcTasksPoller) pcTasksPoller.tick();
+      else refreshPcTasks();
+    }).catch(function (err) {
+      btn.disabled = false;
+      setBoxStatus('task-status', err.message || String(err), false);
+    });
+}
+
+function openTaskDetail(id) {
+  currentTaskDetail = { id: String(id) };
+  el('pc-tasks-wrap').style.display = 'none';
+  el('pc-task-detail').style.display = 'block';
+  refreshTaskDetail(String(id), false);
+}
+
+function closeTaskDetail() {
+  currentTaskDetail = null;
+  el('pc-task-detail').style.display = 'none';
+  el('pc-tasks-wrap').style.display = 'block';
+  refreshPcTasks();
+}
+
+function refreshTaskDetail(id, silent) {
+  if (!pcCfg) return Promise.resolve();
+  return pcRequest(pcCfg, 'GET', '/api/tasks/' + encodeURIComponent(id))
+    .then(function (data) {
+      currentTaskDetail = parseTaskDetail(data);
+      renderTaskDetail();
+    }).catch(function (err) {
+      if (!silent) toast(err.message || String(err));
+    });
+}
+
+function renderTaskDetail() {
+  var tk = currentTaskDetail;
+  if (!tk || tk.title == null) return;
+  el('task-detail-title').textContent = tk.title;
+  el('task-detail-meta').innerHTML =
+    '<span class="' + taskBadgeClass(tk.status) + '">'
+    + escapeHtml(taskStatusLabel(tk.status)) + '</span>'
+    + (tk.bot_name
+      ? '<div class="muted">'
+        + escapeHtml(t('task_bot_line', { name: tk.bot_name })) + '</div>' : '')
+    + (tk.created_at
+      ? '<div class="muted">' + escapeHtml(tk.created_at) + '</div>' : '');
+  var html = '<label>' + escapeHtml(t('task_detail_prompt')) + '</label>'
+    + '<div class="card"><div style="white-space:pre-wrap">'
+    + escapeHtml(tk.prompt) + '</div></div>';
+  if (tk.result) {
+    html += '<label>' + escapeHtml(t('task_detail_result')) + '</label>'
+      + '<div class="card"><div style="white-space:pre-wrap">'
+      + escapeHtml(tk.result) + '</div></div>';
+  }
+  if (tk.error) {
+    html += '<label>' + escapeHtml(t('task_detail_error')) + '</label>'
+      + '<div class="card"><div style="white-space:pre-wrap;color:#b71c1c">'
+      + escapeHtml(tk.error) + '</div></div>';
+  }
+  html += '<label>' + escapeHtml(t('task_detail_log')) + '</label>';
+  if (tk.log && tk.log.length) {
+    html += tk.log.map(function (line) {
+      return '<div class="logline">'
+        + escapeHtml((line.ts ? line.ts + ' — ' : '') + line.text) + '</div>';
+    }).join('');
+  } else {
+    html += '<p class="muted">' + escapeHtml(t('task_log_empty')) + '</p>';
+  }
+  el('task-detail-body').innerHTML = html;
+  var cancellable = ['queued', 'running', 'waiting_approval']
+    .indexOf(tk.status) >= 0;
+  el('task-cancel').style.display = cancellable ? '' : 'none';
+}
+
+function onTaskCancel() {
+  if (!currentTaskDetail || !pcCfg) return;
+  var id = currentTaskDetail.id;
+  pcRequest(pcCfg, 'POST', '/api/tasks/' + encodeURIComponent(id) + '/cancel', {})
+    .then(function () {
+      toast(t('toast_task_cancelled'));
+      refreshTaskDetail(id, true);
+      refreshPcTasks();
+    }).catch(function (err) {
+      toast(err.message || String(err));
+    });
+}
+
+/* ================= التحكّم بالحاسوب (v3.2) ================= */
+var lastPcStatus = null;
+var lastPcFiles = null;
+var pcFilesPath = '';
+var lastPcPrinters = [];
+var lastPcWindows = [];
+var pcWindowsLoaded = false;
+var lastPcProcesses = [];
+var pcProcessesLoaded = false;
+var powerArmAction = null;
+var powerArmTimer = null;
+
+/* ---------- الحالة ---------- */
+function refreshPcStatus() {
+  if (!pcConnected || !pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/status').then(function (data) {
+    lastPcStatus = parseStatus(data);
+    renderPcStatus();
+    if (!pcFilesPath && lastPcStatus.home) loadPcFiles(lastPcStatus.home);
+  }).catch(function () { /* خطأ عابر */ });
+}
+
+function renderPcStatus() {
+  var box = el('pc-status-fields');
+  if (!box) return;
+  var st = lastPcStatus;
+  if (!st) { box.innerHTML = ''; return; }
+  function row(key, value) {
+    return '<div class="muted">' + escapeHtml(t(key)) + '</div>'
+      + '<div>' + escapeHtml(value) + '</div>';
+  }
+  var html = '';
+  if (st.hostname) html += row('status_hostname', st.hostname);
+  if (st.os) html += row('status_os', st.os);
+  if (st.platform) html += row('status_platform', st.platform);
+  if (st.version) html += row('status_version', st.version);
+  html += row('status_uptime', formatUptime(st.uptime_s));
+  if (st.disk) {
+    html += row('status_disk', t('status_disk_value',
+      { free: st.disk.free_gb, total: st.disk.total_gb }));
+  }
+  if (st.ram_mb != null) {
+    html += row('status_ram', t('status_ram_value', { mb: st.ram_mb }));
+  }
+  box.innerHTML = html;
+}
+
+/* ---------- الملفّات ---------- */
+function loadPcFiles(path) {
+  if (!pcCfg || path == null || path === '') return;
+  pcRequest(pcCfg, 'GET', '/api/files?path=' + encodeURIComponent(path))
+    .then(function (data) {
+      lastPcFiles = parseFiles(data);
+      pcFilesPath = lastPcFiles.path || path;
+      renderPcFiles();
+    }).catch(function (err) {
+      setBoxStatus('files-status', err.message || String(err), false);
+    });
+}
+
+function renderPcFiles() {
+  var box = el('files-list');
+  if (!box) return;
+  el('files-path').textContent = pcFilesPath || '';
+  el('files-up').style.display =
+    (lastPcFiles && lastPcFiles.parent) ? '' : 'none';
+  if (!lastPcFiles) { box.innerHTML = ''; return; }
+  if (!lastPcFiles.entries.length) {
+    box.innerHTML = '<p class="muted">' + escapeHtml(t('files_empty')) + '</p>';
+    return;
+  }
+  box.innerHTML = lastPcFiles.entries.map(function (e, i) {
+    if (e.kind === 'dir') {
+      return '<div class="card"><div class="card-title">📁 '
+        + escapeHtml(e.name) + '</div>'
+        + '<button data-dir-idx="' + i + '">'
+        + escapeHtml(t('btn_open_folder')) + '</button></div>';
+    }
+    return '<div class="card"><div class="card-title">📄 '
+      + escapeHtml(e.name) + '</div>'
+      + (e.size != null
+        ? '<div class="muted">' + escapeHtml(formatSize(e.size)) + '</div>' : '')
+      + '<button data-dl-idx="' + i + '">'
+      + escapeHtml(t('btn_download')) + '</button> '
+      + '<button data-print-idx="' + i + '">'
+      + escapeHtml(t('btn_print')) + '</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-dir-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var e = lastPcFiles.entries[Number(btn.getAttribute('data-dir-idx'))];
+      if (e) loadPcFiles(joinRemotePath(pcFilesPath, e.name));
+    });
+  });
+  box.querySelectorAll('[data-dl-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var e = lastPcFiles.entries[Number(btn.getAttribute('data-dl-idx'))];
+      if (e) downloadPcFile(e);
+    });
+  });
+  box.querySelectorAll('[data-print-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var e = lastPcFiles.entries[Number(btn.getAttribute('data-print-idx'))];
+      if (e) printPcFile(e);
+    });
+  });
+}
+
+function saveDownload(name, contentB64) {
+  try {
+    var bin = atob(contentB64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var blob = new Blob([bytes]);
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'file';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+  } catch (e) { /* بيئة بلا تنزيلات: نتجاهل بصمت */ }
+}
+
+function downloadPcFile(entry) {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'GET',
+    '/api/file?path=' + encodeURIComponent(joinRemotePath(pcFilesPath, entry.name)))
+    .then(function (data) {
+      var file = parseFileDownload(data);
+      saveDownload(file.name || entry.name, file.content_b64);
+      toast(t('toast_download_started', { name: file.name || entry.name }));
+    }).catch(function (err) {
+      setBoxStatus('files-status', err.message || String(err), false);
+    });
+}
+
+function printPcFile(entry) {
+  if (!pcCfg) return;
+  var printer = el('printer-select').value || '';
+  pcRequest(pcCfg, 'POST', '/api/print',
+    printBody(joinRemotePath(pcFilesPath, entry.name), printer))
+    .then(function () {
+      toast(t('toast_print_sent', { name: entry.name }));
+    }).catch(function (err) {
+      setBoxStatus('files-status', err.message || String(err), false);
+    });
+}
+
+/* ---------- الرفع ---------- */
+function onUploadPick() {
+  var input = el('upload-input');
+  var file = input.files && input.files[0];
+  if (!file || !pcCfg) return;
+  setBoxStatus('upload-status', t('upload_sending', { name: file.name }), null);
+  var reader = new FileReader();
+  reader.onload = function () {
+    var body = uploadBody(
+      joinRemotePath(pcFilesPath, file.name), String(reader.result || ''));
+    input.value = '';
+    pcRequest(pcCfg, 'POST', '/api/upload', body)
+      .then(function (data) {
+        var size = (data && typeof data.size === 'number')
+          ? formatSize(data.size) : '';
+        setBoxStatus('upload-status',
+          t('upload_done', { name: file.name, size: size }), true);
+        if (pcFilesPath) loadPcFiles(pcFilesPath);
+      }).catch(function (err) {
+        setBoxStatus('upload-status', err.message || String(err), false);
+      });
+  };
+  reader.onerror = function () {
+    input.value = '';
+    setBoxStatus('upload-status', String(reader.error || 'error'), false);
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- الطابعات ---------- */
+function refreshPcPrinters() {
+  if (!pcConnected || !pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/printers').then(function (data) {
+    lastPcPrinters = parsePrinters(data);
+    renderPcPrinters();
+  }).catch(function () { /* خطأ عابر */ });
+}
+
+function renderPcPrinters() {
+  var sel = el('printer-select');
+  if (!sel) return;
+  var current = sel.value;
+  sel.innerHTML = '<option value="">' + escapeHtml(t('printer_auto')) + '</option>'
+    + lastPcPrinters.map(function (p) {
+      return '<option value="' + escapeHtml(p.name) + '">'
+        + escapeHtml(p.name)
+        + (p.is_default ? escapeHtml(t('printer_default_suffix')) : '')
+        + '</option>';
+    }).join('');
+  sel.value = current || '';
+  el('printers-list').innerHTML = lastPcPrinters.length ? ''
+    : '<p class="muted">' + escapeHtml(t('printers_none')) + '</p>';
+}
+
+/* ---------- تشغيل أمر / فتح ---------- */
+function onPcRun() {
+  if (!pcCfg) return;
+  var cmd = el('run-input').value.trim();
+  if (!cmd) return;
+  var out = el('run-output');
+  out.style.display = 'block';
+  out.textContent = t('run_running');
+  var btn = el('run-btn');
+  btn.disabled = true;
+  pcRequest(pcCfg, 'POST', '/api/run', runBody(cmd), PC_RUN_TIMEOUT_MS)
+    .then(function (data) {
+      btn.disabled = false;
+      var r = parseRunResult(data);
+      var lines = [r.timed_out
+        ? t('run_timed_out')
+        : t('run_exit', { code: r.exit == null ? t('unknown_mark') : r.exit })];
+      if (r.stdout) lines.push(r.stdout);
+      if (r.stderr) lines.push(r.stderr);
+      out.textContent = lines.join('\n');
+    }).catch(function (err) {
+      btn.disabled = false;
+      out.textContent = err.message || String(err);
+    });
+}
+
+function onPcOpen() {
+  if (!pcCfg) return;
+  var target = el('open-input').value.trim();
+  if (!target) return;
+  pcRequest(pcCfg, 'POST', '/api/open', openBody(target))
+    .then(function () {
+      toast(t('toast_opened'));
+      setBoxStatus('open-status', '', null);
+    }).catch(function (err) {
+      setBoxStatus('open-status', err.message || String(err), false);
+    });
+}
+
+/* ---------- لقطة الشاشة ---------- */
+function onPcScreenshot() {
+  if (!pcCfg) return;
+  setBoxStatus('shot-status', '', null);
+  pcRequest(pcCfg, 'GET', '/api/screenshot')
+    .then(function (data) {
+      var img = el('shot-img');
+      img.src = screenshotDataUri(parseScreenshot(data));
+      img.style.display = 'block';
+    }).catch(function (err) {
+      setBoxStatus('shot-status', err.message || String(err), false);
+    });
+}
+
+/* ---------- الحافظة ---------- */
+function onClipGet() {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/clipboard')
+    .then(function (data) {
+      var text = parseClipboard(data);
+      el('clip-text').value = text;
+      setBoxStatus('clip-status', text ? '' : t('clip_empty'), text ? null : false);
+    }).catch(function (err) {
+      setBoxStatus('clip-status', err.message || String(err), false);
+    });
+}
+
+function onClipSet() {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'POST', '/api/clipboard', clipboardBody(el('clip-text').value))
+    .then(function () {
+      toast(t('toast_clip_sent'));
+    }).catch(function (err) {
+      setBoxStatus('clip-status', err.message || String(err), false);
+    });
+}
+
+/* ---------- الصوت ---------- */
+function onPcVolume(action) {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'POST', '/api/volume', volumeBody(action))
+    .then(function () {
+      toast(t('toast_volume'));
+    }).catch(function (err) {
+      toast(err.message || String(err));
+    });
+}
+
+/* ---------- النوافذ ---------- */
+function refreshPcWindows() {
+  if (!pcConnected || !pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/windows')
+    .then(function (data) {
+      lastPcWindows = parseWindows(data);
+      pcWindowsLoaded = true;
+      renderPcWindows();
+    }).catch(function (err) {
+      el('windows-list').innerHTML = '<p class="muted">'
+        + escapeHtml(err.message || String(err)) + '</p>';
+    });
+}
+
+function renderPcWindows() {
+  var box = el('windows-list');
+  if (!box) return;
+  if (!lastPcWindows.length) {
+    box.innerHTML = '<p class="muted">' + escapeHtml(t('windows_none')) + '</p>';
+    return;
+  }
+  box.innerHTML = lastPcWindows.map(function (w, i) {
+    return '<div class="card"><div class="card-title">' + escapeHtml(w.title)
+      + '</div>'
+      + '<button data-win-idx="' + i + '" data-win-act="focus">'
+      + escapeHtml(t('btn_win_focus')) + '</button> '
+      + '<button data-win-idx="' + i + '" data-win-act="minimize">'
+      + escapeHtml(t('btn_win_minimize')) + '</button> '
+      + '<button data-win-idx="' + i + '" data-win-act="maximize">'
+      + escapeHtml(t('btn_win_maximize')) + '</button> '
+      + '<button class="danger" data-win-idx="' + i + '" data-win-act="close">'
+      + escapeHtml(t('btn_win_close')) + '</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-win-act]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var w = lastPcWindows[Number(btn.getAttribute('data-win-idx'))];
+      if (w) onPcWindowAction(w.id, btn.getAttribute('data-win-act'));
+    });
+  });
+}
+
+function onPcWindowAction(id, action) {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'POST', '/api/window', windowBody(id, action))
+    .then(function () {
+      toast(t('toast_window_action'));
+      refreshPcWindows();
+    }).catch(function (err) {
+      toast(err.message || String(err));
+    });
+}
+
+/* ---------- العمليات ---------- */
+function refreshPcProcesses() {
+  if (!pcConnected || !pcCfg) return;
+  pcRequest(pcCfg, 'GET', '/api/processes')
+    .then(function (data) {
+      lastPcProcesses = parseProcesses(data);
+      pcProcessesLoaded = true;
+      renderPcProcesses();
+    }).catch(function (err) {
+      el('proc-list').innerHTML = '<p class="muted">'
+        + escapeHtml(err.message || String(err)) + '</p>';
+    });
+}
+
+function renderPcProcesses() {
+  var box = el('proc-list');
+  if (!box) return;
+  if (!lastPcProcesses.length) {
+    box.innerHTML = '<p class="muted">' + escapeHtml(t('processes_none')) + '</p>';
+    return;
+  }
+  box.innerHTML = lastPcProcesses.map(function (p, i) {
+    var mem = p.mem_mb != null ? formatSize(p.mem_mb * 1048576) : '';
+    return '<div class="card"><div class="card-title">' + escapeHtml(p.name)
+      + '</div>'
+      + '<div class="muted">'
+      + escapeHtml(t('proc_line', { pid: p.pid, mem: mem })) + '</div>'
+      + '<button class="danger" data-proc-idx="' + i + '">'
+      + escapeHtml(t('btn_kill')) + '</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-proc-idx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var p = lastPcProcesses[Number(btn.getAttribute('data-proc-idx'))];
+      if (p) onPcKill(p.pid);
+    });
+  });
+}
+
+function onPcKill(pid) {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'POST', '/api/process/kill', killBody(pid))
+    .then(function () {
+      toast(t('toast_kill_sent'));
+      refreshPcProcesses();
+    }).catch(function (err) {
+      toast(err.message || String(err));
+    });
+}
+
+/* ---------- الطاقة (تأكيد مزدوج داخل الواجهة) ---------- */
+function powerBtnId(action) { return 'power-' + action; }
+
+function renderPowerButtons() {
+  POWER_ACTIONS.forEach(function (a) {
+    var btn = el(powerBtnId(a));
+    if (!btn) return;
+    var armed = powerArmAction === a;
+    btn.textContent = armed ? t('btn_confirm_action') : t('btn_' + a);
+    btn.classList.toggle('armed', armed);
+  });
+}
+
+function onPcPower(action) {
+  if (!pcCfg) return;
+  if (powerArmAction !== action) {
+    /* الضغطة الأولى تُجهِّز، والثانية خلال 4 ثوانٍ تُرسل */
+    powerArmAction = action;
+    renderPowerButtons();
+    if (powerArmTimer) clearTimeout(powerArmTimer);
+    powerArmTimer = setTimeout(function () {
+      powerArmAction = null;
+      renderPowerButtons();
+    }, 4000);
+    return;
+  }
+  if (powerArmTimer) clearTimeout(powerArmTimer);
+  powerArmAction = null;
+  renderPowerButtons();
+  pcRequest(pcCfg, 'POST', '/api/power', powerBody(action))
+    .then(function (data) {
+      var r = parsePower(data);
+      setBoxStatus('power-status',
+        r.scheduled_in_s != null
+          ? t('power_scheduled', { seconds: r.scheduled_in_s })
+          : t('power_done'), true);
+    }).catch(function (err) {
+      setBoxStatus('power-status', err.message || String(err), false);
+    });
+}
+
+/* ================= الشاشة الحية والتحكّم باللمس (v3.3) ================= */
+var pcScreenOn = false;
+var pcScreenDragMode = false;
+var pcScreenPtr = null;
+var pcScreenInputFailed = false;
+
+function renderScreenButtons() {
+  var start = el('screen-start');
+  var stop = el('screen-stop');
+  if (start) start.style.display = pcScreenOn ? 'none' : '';
+  if (stop) stop.style.display = pcScreenOn ? '' : 'none';
+}
+
+function startPcScreen() {
+  if (!pcCfg) return;
+  setBoxStatus('screen-status', '', null);
+  pcScreenInputFailed = false;
+  var img = el('pcScreenImg');
+  img.src = screenStreamUrl(pcCfg, { w: 1280, q: 60, fps: 10 });
+  img.style.display = 'block';
+  pcScreenOn = true;
+  renderScreenButtons();
+}
+
+function stopPcScreen() {
+  pcScreenOn = false;
+  pcScreenPtr = null;
+  var img = el('pcScreenImg');
+  if (img) {
+    img.removeAttribute('src');
+    img.style.display = 'none';
+  }
+  renderScreenButtons();
+}
+
+/* فشل تحميل البثّ (رمز خاطئ أو تحكّم معطّل أو نظام لا يدعم البثّ):
+ * الصورة لا تصل أبداً — نعود إلى حالة الإيقاف مع ملاحظة. */
+function onScreenImgError() {
+  if (!pcScreenOn) return;
+  stopPcScreen();
+  setBoxStatus('screen-status', t('screen_err'), false);
+}
+
+/* إرسال حدث إدخال واحد: الفشل لا يقطع التفاعل؛ أول فشل يترك ملاحظة
+ * هادئة في سطر الحالة، وأول نجاح بعده يمسحها — بلا إزعاج أثناء السحب. */
+function sendPcInput(body) {
+  if (!pcCfg) return;
+  pcRequest(pcCfg, 'POST', '/api/input', body, PC_INPUT_TIMEOUT_MS)
+    .then(function () {
+      if (pcScreenInputFailed) {
+        pcScreenInputFailed = false;
+        setBoxStatus('screen-status', '', null);
+      }
+    })
+    .catch(function () {
+      if (!pcScreenInputFailed) {
+        pcScreenInputFailed = true;
+        setBoxStatus('screen-status', t('screen_input_failed'), false);
+      }
+    });
+}
+
+function screenPointFromEvent(e) {
+  var img = el('pcScreenImg');
+  return normPoint(e.clientX, e.clientY, img.getBoundingClientRect());
+}
+
+function onScreenPointerDown(e) {
+  if (!pcScreenOn) return;
+  e.preventDefault();
+  var img = el('pcScreenImg');
+  try { img.setPointerCapture(e.pointerId); } catch (err) { /* بيئة بلا أسر للمؤشّر */ }
+  var state = {
+    id: e.pointerId, startPt: screenPointFromEvent(e), lastPt: null,
+    startT: Date.now(), moved: false, longFired: false,
+    dragDown: false, lastMoveAt: 0, longTimer: null
+  };
+  state.lastPt = state.startPt;
+  pcScreenPtr = state;
+  state.longTimer = setTimeout(function () {
+    if (pcScreenPtr === state && !state.moved) {
+      state.longFired = true;
+      sendPcInput(inputMouseBody('mouse_down', state.startPt, 'right'));
+      sendPcInput(inputMouseBody('mouse_up', state.startPt, 'right'));
+    }
+  }, 500);
+}
+
+function onScreenPointerMove(e) {
+  var state = pcScreenPtr;
+  if (!state || e.pointerId !== state.id || !pcScreenOn) return;
+  e.preventDefault();
+  var pt = screenPointFromEvent(e);
+  state.lastPt = pt;
+  var rect = el('pcScreenImg').getBoundingClientRect();
+  if (Math.abs((pt.x - state.startPt.x) * rect.width) > 8
+      || Math.abs((pt.y - state.startPt.y) * rect.height) > 8) {
+    state.moved = true;
+  }
+  if (!state.moved || state.longFired) return;
+  if (pcScreenDragMode && !state.dragDown) {
+    state.dragDown = true;
+    sendPcInput(inputMouseBody('mouse_down', state.startPt, 'left'));
+  }
+  var now = Date.now();
+  if (now - state.lastMoveAt >= 60) {
+    state.lastMoveAt = now;
+    sendPcInput(inputMouseBody('mouse_move', pt));
+  }
+}
+
+function onScreenPointerUp(e) {
+  var state = pcScreenPtr;
+  if (!state || e.pointerId !== state.id) return;
+  pcScreenPtr = null;
+  if (state.longTimer) clearTimeout(state.longTimer);
+  if (!pcScreenOn) return;
+  var pt = screenPointFromEvent(e);
+  if (state.dragDown) {
+    sendPcInput(inputMouseBody('mouse_move', pt));
+    sendPcInput(inputMouseBody('mouse_up', pt, 'left'));
+    return;
+  }
+  if (state.longFired || state.moved) return;
+  if (Date.now() - state.startT < 500) {
+    /* نقرة قصيرة بلا حركة: نقر أيسر عند نقطة البدء */
+    sendPcInput(inputMouseBody('mouse_down', state.startPt, 'left'));
+    sendPcInput(inputMouseBody('mouse_up', state.startPt, 'left'));
+  }
+}
+
+function onScreenPointerCancel(e) {
+  var state = pcScreenPtr;
+  if (!state || e.pointerId !== state.id) return;
+  pcScreenPtr = null;
+  if (state.longTimer) clearTimeout(state.longTimer);
+  if (state.dragDown) {
+    /* لا نترك زرّ الفأرة عالقاً على الحاسوب */
+    sendPcInput(inputMouseBody('mouse_up', state.lastPt, 'left'));
+  }
+}
+
+function onScreenWheel(delta) {
+  sendPcInput(inputWheelBody({ x: 0.5, y: 0.5 }, delta));
+}
+
+function onScreenDragToggle() {
+  pcScreenDragMode = !pcScreenDragMode;
+  el('screen-drag').classList.toggle('toggle-on', pcScreenDragMode);
+}
+
+function onScreenSendText() {
+  var input = el('screen-text');
+  var text = input.value;
+  if (!text) return;
+  sendPcInput(inputTextBody(text));
+  input.value = '';
+}
+
+function onScreenKey(key) {
+  sendPcInput(inputKeyBody(key));
 }
