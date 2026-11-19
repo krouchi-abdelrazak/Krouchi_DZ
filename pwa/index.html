@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krouchi_DZ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1565C0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Krouchi_DZ">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: sans-serif; background: #f4f6f8; color: #1a1a1a; }
+  header { background: #1565C0; color: #fff; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  header .title { font-size: 20px; font-weight: bold; }
+  header .sub { font-size: 12px; opacity: .85; }
+  header select.langsel { width: auto; padding: 6px 8px; font-size: 13px;
+    border: none; border-radius: 6px; background: #fff; color: #0d47a1; }
+  nav { display: flex; background: #0d47a1; }
+  nav button { flex: 1; padding: 10px 4px; background: none; border: none; color: #cfdff2;
+               font-size: 14px; cursor: pointer; }
+  nav button.active { color: #fff; background: #1565C0; font-weight: bold; }
+  main { padding: 14px; max-width: 720px; margin: 0 auto; }
+  h2 { font-size: 17px; margin: 6px 0 10px; }
+  label { display: block; font-size: 13px; margin: 10px 0 4px; color: #444; }
+  input, select, textarea { width: 100%; padding: 10px; font-size: 15px;
+    border: 1px solid #b0bec5; border-radius: 8px; background: #fff; }
+  textarea { min-height: 64px; }
+  button.primary { width: 100%; margin-top: 14px; padding: 12px; font-size: 16px;
+    background: #1565C0; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  button.primary:disabled { background: #90a4ae; }
+  button.danger { background: #eceff1; color: #b71c1c; border: 1px solid #cfd8dc;
+    border-radius: 6px; padding: 6px 10px; margin-top: 8px; cursor: pointer; }
+  .card { background: #fff; border: 1px solid #dde3e8; border-radius: 10px;
+    padding: 10px 12px; margin: 8px 0; }
+  .card-title { font-weight: bold; }
+  .card button:not(.danger) { background: #e3f2fd; border: 1px solid #bbdefb;
+    border-radius: 6px; padding: 6px 10px; margin-top: 8px; cursor: pointer; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+  .badge.ok { background: #e8f5e9; color: #2e7d32; }
+  .badge.err { background: #ffebee; color: #b71c1c; }
+  .status { margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 14px;
+    background: #eceff1; white-space: pre-wrap; }
+  .status:empty { display: none; }
+  .status.ok { background: #e8f5e9; color: #1b5e20; }
+  .status.err { background: #ffebee; color: #b71c1c; }
+  .muted { color: #607d8b; font-size: 13px; }
+  ul.models { margin: 8px 0; padding-inline-start: 20px; font-size: 13px;
+    max-height: 180px; overflow: auto; }
+  #chat-messages { background: #fff; border: 1px solid #dde3e8; border-radius: 10px;
+    padding: 10px; min-height: 300px; max-height: 55vh; overflow-y: auto; }
+  #pc-chat-messages { background: #fff; border: 1px solid #dde3e8; border-radius: 10px;
+    padding: 10px; min-height: 260px; max-height: 55vh; overflow-y: auto; }
+  .card button.approve { background: #e8f5e9; border: 1px solid #a5d6a7;
+    border-radius: 6px; padding: 6px 12px; margin-top: 8px; cursor: pointer; }
+  .msg { margin: 8px 0; padding: 8px 10px; border-radius: 10px; max-width: 92%;
+    white-space: pre-wrap; word-wrap: break-word; }
+  .msg .who { font-size: 11px; color: #607d8b; margin-bottom: 2px; }
+  .msg.user { background: #e8f5e9; margin-inline-start: auto; }
+  .msg.bot { background: #eef3f8; margin-inline-end: auto; }
+  .msg.error { background: #ffebee; color: #b71c1c; }
+  .chatbar { display: flex; gap: 8px; margin-top: 10px; }
+  .chatbar textarea { flex: 1; min-height: 44px; }
+  .chatbar button { padding: 0 18px; font-size: 15px; background: #1565C0; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer; }
+  .chatbar button:disabled { background: #90a4ae; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="title">⚒️ Krouchi_DZ</div>
+    <div class="sub" data-i18n="app_tagline">وكيلك الشخصي على الهاتف — بمفاتيحك أنت</div>
+  </div>
+  <select id="lang-select" class="langsel" aria-label="Language">
+    <option value="ar">العربية</option>
+    <option value="en">English</option>
+  </select>
+</header>
+<nav>
+  <button class="tabbtn active" data-tab="api" data-i18n="tab_api">🔑 إدخال API</button>
+  <button class="tabbtn" data-tab="bots" data-i18n="tab_bots">🤖 البوتات</button>
+  <button class="tabbtn" data-tab="chat" data-i18n="tab_chat">💬 المحادثة</button>
+  <button class="tabbtn" data-tab="pc" data-i18n="tab_pc">🖥️ الحاسوب</button>
+  <button class="tabbtn" data-tab="about" data-i18n="tab_about">ℹ️ حول</button>
+</nav>
+<main>
+
+  <!-- إدخال API -->
+  <section id="tab-api">
+    <h2 data-i18n="api_title">إدخال API — أي مفتاح وأي عنوان</h2>
+    <label data-i18n="label_base_url">عنوان الأساس (Base URL)</label>
+    <input id="api-url" type="url" dir="ltr" placeholder="https://openrouter.ai/api/v1">
+    <label data-i18n="label_api_key">مفتاح API</label>
+    <input id="api-key" type="password" dir="ltr" placeholder="sk-…">
+    <label data-i18n="label_provider_name">اسم المزوّد (اختياري — يُشتق من الخادم إن تُرك)</label>
+    <input id="api-name" type="text" placeholder="openrouter">
+    <button id="api-fetch" class="primary" data-i18n="btn_fetch_models">اجلب النماذج</button>
+    <div id="api-status" class="status"></div>
+    <ul id="api-models" class="models"></ul>
+    <h2 data-i18n="providers_registered">المزوّدون المسجّلون</h2>
+    <div id="providers-list"></div>
+  </section>
+
+  <!-- البوتات -->
+  <section id="tab-bots" style="display:none">
+    <h2 data-i18n="bot_new">بوت جديد</h2>
+    <label data-i18n="label_bot_name">اسم البوت</label>
+    <input id="bot-name" type="text" data-i18n-ph="ph_bot_name" placeholder="مساعدي">
+    <label data-i18n="label_provider">المزوّد</label>
+    <select id="bot-provider"></select>
+    <label data-i18n="label_model">النموذج (اختر من المكتشفة أو اكتب)</label>
+    <input id="bot-model" type="text" dir="ltr" list="bot-models" placeholder="deepseek/deepseek-chat">
+    <datalist id="bot-models"></datalist>
+    <label data-i18n="label_system">تعليمات النظام (اختيارية)</label>
+    <textarea id="bot-system" data-i18n-ph="ph_system" placeholder="أنت مساعد دقيق يجيب بالعربية…"></textarea>
+    <button id="bot-create" class="primary" data-i18n="btn_create_bot">إنشاء البوت</button>
+    <div id="bot-status" class="status"></div>
+    <h2 data-i18n="bots_mine">بوتاتي</h2>
+    <div id="bots-list"></div>
+  </section>
+
+  <!-- المحادثة -->
+  <section id="tab-chat" style="display:none">
+    <h2 data-i18n="chat_title">المحادثة</h2>
+    <label data-i18n="label_bot">البوت</label>
+    <select id="chat-bot"></select>
+    <div id="chat-messages" style="margin-top:10px"></div>
+    <div class="chatbar">
+      <textarea id="chat-input" data-i18n-ph="ph_message" placeholder="اكتب رسالتك…"></textarea>
+      <button id="chat-send" data-i18n="btn_send">إرسال</button>
+    </div>
+    <button id="chat-clear" class="danger" data-i18n="btn_clear_chat">مسح المحادثة</button>
+  </section>
+
+  <!-- الحاسوب -->
+  <section id="tab-pc" style="display:none">
+    <h2 data-i18n="pc_title">الاتصال بالحاسوب</h2>
+    <p class="muted" data-i18n="pc_intro">اربط الهاتف ببرنامج Krouchi_DZ على حاسوبك (على نفس
+       الشبكة) لاستعمال بوتات الحاسوب من الهاتف، والموافقة على طلبات
+       تنفيذه أو رفضها من هاتفك.</p>
+    <label data-i18n="label_pc_host">عنوان الحاسوب (IP أو اسم المضيف)</label>
+    <input id="pc-host" type="text" dir="ltr" placeholder="192.168.1.10">
+    <label data-i18n="label_pc_port">المنفذ</label>
+    <input id="pc-port" type="number" dir="ltr" placeholder="8765">
+    <label data-i18n="label_pc_token">رمز الاقتران</label>
+    <input id="pc-token" type="password" dir="ltr" data-i18n-ph="ph_pc_token" placeholder="رمز الاقتران من الحاسوب">
+    <button id="pc-connect" class="primary" data-i18n="btn_connect">اتصال</button>
+    <div id="pc-status" class="status"></div>
+
+    <div id="pc-connected" style="display:none">
+      <h2><span data-i18n="pc_pending_approvals">الموافقات المعلّقة</span> <span id="pc-approvals-count" class="badge err" style="display:none"></span></h2>
+      <div id="pc-approvals-list"></div>
+      <p class="muted" data-i18n="pc_approvals_note">حين يطلب بوت على الحاسوب تنفيذ إجراء، يظهر طلبه هنا
+         لتُوافق عليه أو ترفضه — وعدم الجواب يبقيه معلّقاً على الحاسوب.</p>
+
+      <div id="pc-bots-wrap">
+        <h2 data-i18n="pc_bots_title">بوتات الحاسوب</h2>
+        <div id="pc-bots-list"></div>
+      </div>
+
+      <div id="pc-chat-wrap" style="display:none">
+        <h2 id="pc-chat-title" data-i18n="pc_chat_title">محادثة الحاسوب</h2>
+        <div id="pc-chat-messages"></div>
+        <div class="chatbar">
+          <textarea id="pc-chat-input" data-i18n-ph="ph_message" placeholder="اكتب رسالتك…"></textarea>
+          <button id="pc-chat-send" data-i18n="btn_send">إرسال</button>
+        </div>
+        <button id="pc-chat-back" class="danger" data-i18n="btn_pc_back">عودة إلى بوتات الحاسوب</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- حول -->
+  <section id="tab-about" style="display:none">
+    <h2 data-i18n="about_title">حول Krouchi_DZ</h2>
+    <p><b data-i18n="about_author">تأليف: كروشي عبد الرزاق</b></p>
+    <p data-i18n="about_p1">الإصدار 3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي،
+       بشيفرة أصلية مكتوبة من الصفر.</p>
+    <p data-i18n-html="about_p2">وضعان: <b>مستقل على الهاتف</b> (إدخال API واكتشاف النماذج
+       والمحادثة — لا أدوات ملفات ولا تشغيل أوامر على الهاتف)،
+       و<b>مرافق للحاسوب</b> من تبويب «الحاسوب»: محادثة عبر بوتات
+       الحاسوب، والموافقة على طلبات تنفيذه أو رفضها من هاتفك.</p>
+    <p data-i18n="about_p3">مفاتيحك ومحادثاتك محفوظة في تخزين هذا التطبيق الخاص على هاتفك،
+       ولا تغادر بياناتك الجهاز إلا إلى مزوّد النماذج الذي تختاره
+       وبمفتاحك — أو إلى حاسوبك أنت عند استعمال الوضع المرافق.</p>
+    <label data-i18n="label_language">اللغة</label>
+    <select id="lang-select-about">
+      <option value="ar">العربية</option>
+      <option value="en">English</option>
+    </select>
+  </section>
+
+</main>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
