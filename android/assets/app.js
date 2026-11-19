@@ -648,7 +648,10 @@ function buildPcRequest(cfg, method, path, bodyObj) {
 }
 
 function pcChatBody(botId, text) {
-  return { bot_id: botId, text: text };
+  /* معرّف البوت قد يصل نصّاً من خاصية HTML (getAttribute) — يُحوَّل إلى رقم */
+  var id = botId;
+  if (typeof id === 'string' && /^-?\d+$/.test(id.trim())) id = Number(id);
+  return { bot_id: id, text: text };
 }
 
 function pcDecisionBody(decision) {
@@ -1270,6 +1273,8 @@ function renderPcBots(bots) {
 
 /* ---------- محادثة الحاسوب ---------- */
 function openPcChat(botId, botName) {
+  var idNum = Number(botId);
+  if (!isNaN(idNum)) botId = idNum;
   currentPcBot = { id: botId, name: botName || t('pc_bot_fallback_name') };
   el('pc-bots-wrap').style.display = 'none';
   el('pc-chat-wrap').style.display = 'block';
