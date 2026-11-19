@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 
@@ -29,10 +30,14 @@ from krouchi_dz.gui import (
     EngineRunner,
     KrouchiApp,
     PhoneLinkDialog,
+    TasksWindow,
     _ApprovalBridge,
+    control_setting_enabled,
+    ip_label,
 )
 from krouchi_dz.providers import ChatResult, MockProvider, ToolCall
 from krouchi_dz.server import CompanionServer
+from krouchi_dz.tasks import TaskStore
 
 
 def _display_available() -> bool:
@@ -451,6 +456,212 @@ class TestPhoneLinkDialog(GuiFixture):
                 lambda e: e.db.get_setting("companion_autostart", "")
             )
             == "1"
+        )
+
+    def test_control_toggle_persists_server_format(self):
+        dialog, server = self.make_dialog()
+        # غياب الإعداد = مفعَّل عند الخادم وعند الحوار معاً (الافتراضي).
+        self.assertTrue(server.is_control_enabled())
+        self.pump_until(lambda: dialog.control_var.get() is True)
+        dialog.control_var.set(False)
+        dialog._save_control()
+        self.pump_until(
+            lambda: dialog.runner.call(
+                lambda e: e.db.get_setting("control_enabled", "")
+            )
+            == "false"
+        )
+        # الخادم يقرأ القيمة المكتوبة بمنطقه نفسه: معطَّل.
+        self.assertFalse(server.is_control_enabled())
+        dialog.control_var.set(True)
+        dialog._save_control()
+        self.pump_until(
+            lambda: dialog.runner.call(
+                lambda e: e.db.get_setting("control_enabled", "")
+            )
+            == "true"
+        )
+        self.assertTrue(server.is_control_enabled())
+
+    def test_control_toggle_reflects_saved_disabled_value(self):
+        runner = self.make_runner()
+        runner.call(
+            lambda e: e.db.set_setting("control_enabled", "false")
+        )
+        server = CompanionServer(
+            engine_call=runner.call_blocking,
+            registry=self.bridge.registry,
+            token="tok-1234567890",
+            port=0,
+        )
+        self.addCleanup(server.stop)
+        dialog = PhoneLinkDialog(self.root, runner, server)
+        self.addCleanup(dialog.top.destroy)
+        self.pump_until(lambda: dialog.control_var.get() is False)
+
+    def test_screen_indicator_follows_server_viewers(self):
+        dialog, server = self.make_dialog()
+        self.assertEqual(dialog.screen_label.cget("text"), "")
+        server._note_screen_stream(1)
+        dialog._refresh_screen_indicator()
+        self.assertIn("الشاشة مشتركة الآن", dialog.screen_label.cget("text"))
+        server._note_screen_stream(-1)
+        dialog._refresh_screen_indicator()
+        self.assertEqual(dialog.screen_label.cget("text"), "")
+
+    def test_tasks_button_opens_tasks_window(self):
+        dialog, server = self.make_dialog()
+        window = dialog.open_tasks()
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        self.assertEqual(window.empty_label.cget("text"), "لا مهام بعد")
+
+
+# ======================================================================
+# وسم عناوين Tailscale وتفسير إعداد التحكم (دوال نقية — بلا شاشة)
+# ======================================================================
+class TestIpLabel(unittest.TestCase):
+    def test_tailscale_range_is_labeled(self):
+        self.assertEqual(ip_label("100.64.0.1"), "100.64.0.1 (Tailscale)")
+        self.assertEqual(
+            ip_label("100.127.255.254"), "100.127.255.254 (Tailscale)"
+        )
+        self.assertEqual(ip_label("100.100.1.1"), "100.100.1.1 (Tailscale)")
+
+    def test_other_addresses_stay_plain(self):
+        for ip in (
+            "100.63.255.255",  # أسفل النطاق مباشرة
+            "100.128.0.1",     # أعلى النطاق مباشرة
+            "192.168.1.5",
+            "10.0.0.3",
+            "172.16.0.2",
+            "8.8.8.8",
+        ):
+            self.assertEqual(ip_label(ip), ip)
+
+    def test_garbage_stays_plain(self):
+        self.assertEqual(ip_label("not-an-ip"), "not-an-ip")
+        self.assertEqual(ip_label(""), "")
+
+
+class TestControlSettingEnabled(unittest.TestCase):
+    def test_mirrors_server_logic(self):
+        self.assertTrue(control_setting_enabled(None))      # غياب = افتراضي
+        self.assertTrue(control_setting_enabled("true"))
+        self.assertTrue(control_setting_enabled("1"))
+        self.assertTrue(control_setting_enabled("yes"))
+        for raw in ("false", "0", "no", "off", " FALSE ", "Off"):
+            self.assertFalse(control_setting_enabled(raw), raw)
+
+
+# ======================================================================
+# نافذة مهام البوتات
+# ======================================================================
+class TestTasksWindow(GuiFixture):
+    def seed_task(self, runner, title="مهمة تجريبية", prompt="اكتب تقريراً",
+                  status="queued"):
+        bot_id = runner.call(lambda e: e.create_bot("منفّذ", "openrouter"))
+        db_path = runner.call(lambda e: str(e.db.path))
+        store = TaskStore(db_path)
+        try:
+            task = store.create_task(bot_id, title, prompt)
+            if status != "queued":
+                store.update_task(task["id"], status=status)
+            return task["id"]
+        finally:
+            store.close()
+
+    def stored_status(self, runner, task_id):
+        db_path = runner.call(lambda e: str(e.db.path))
+        store = TaskStore(db_path)
+        try:
+            task = store.get_task(task_id)
+            return task["status"] if task else None
+        finally:
+            store.close()
+
+    def test_renders_seeded_task_with_localized_status(self):
+        runner = self.make_runner()
+        self.seed_task(runner)
+        window = TasksWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        children = window.tree.get_children()
+        self.assertEqual(len(children), 1)
+        values = window.tree.item(children[0], "values")
+        self.assertIn("مهمة تجريبية", str(values))
+        self.assertIn("منفّذ", str(values))       # اسم البوت من الوصل
+        self.assertIn("في الانتظار", str(values))  # queued مترجمة
+        self.assertEqual(window.empty_label.cget("text"), "")
+        # تحديد الصفّ يعرض التعليمة في لوحة التفاصيل ويُفعّل الإلغاء.
+        window.tree.selection_set(children[0])
+        window._on_select()
+        self.assertIn("اكتب تقريراً", window.prompt_text.get("1.0", "end"))
+        self.assertEqual(str(window.cancel_button.cget("state")), "normal")
+
+    def test_empty_state_text(self):
+        runner = self.make_runner()
+        window = TasksWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        self.assertEqual(window.tree.get_children(), ())
+        self.assertEqual(window.empty_label.cget("text"), "لا مهام بعد")
+
+    def test_cancel_button_uses_store_path_without_manager(self):
+        runner = self.make_runner()
+        task_id = self.seed_task(runner)
+        window = TasksWindow(self.root, runner)  # بلا خادم: مسار المخزن
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        window.tree.selection_set(window.tree.get_children()[0])
+        window._on_select()
+        window.cancel_task()
+        self.pump_until(
+            lambda: self.stored_status(runner, task_id) == "cancelled"
+        )
+        # والقائمة المحدّثة تُظهر الحالة الجديدة مترجمة.
+        self.pump_until(
+            lambda: any(
+                "أُلغيت" in str(window.tree.item(c, "values"))
+                for c in window.tree.get_children()
+            )
+        )
+
+    def test_cancel_button_invokes_server_task_manager(self):
+        runner = self.make_runner()
+        task_id = self.seed_task(runner)
+        calls = []
+
+        class _StubManager:
+            def cancel(self, tid):
+                calls.append(tid)
+                return "ok"
+
+        stub_server = types.SimpleNamespace(task_manager=_StubManager())
+        window = TasksWindow(self.root, runner, server=stub_server)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        window.tree.selection_set(window.tree.get_children()[0])
+        window._on_select()
+        window.cancel_task()
+        # نقطة الدخول نفسها التي تستعملها نقطة إلغاء الخادم، بنفس المعرّف.
+        self.pump_until(lambda: calls == [task_id])
+
+    def test_cancel_button_disabled_for_final_task(self):
+        runner = self.make_runner()
+        self.seed_task(runner, status="done")
+        window = TasksWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.rows_loaded)
+        children = window.tree.get_children()
+        self.assertEqual(len(children), 1)
+        self.assertIn(
+            "اكتملت", str(window.tree.item(children[0], "values"))
+        )
+        window.tree.selection_set(children[0])
+        window._on_select()
+        self.assertEqual(
+            str(window.cancel_button.cget("state")), "disabled"
         )
 
 
