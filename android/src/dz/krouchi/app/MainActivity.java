@@ -18,7 +18,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
@@ -131,6 +134,65 @@ public class MainActivity extends Activity {
         public void http(final String reqId, final String method, final String url,
                          final String headersJson, final String body) {
             doHttp(reqId, method, url, headersJson, body, 90000);
+        }
+
+        /**
+         * إيقاظ الحاسوب عبر الشبكة (Wake-on-LAN): تُبنى الحزمة السحرية
+         * (102 بايت: 6 بايتات 0xFF ثم عنوان MAC مكرراً 16 مرة) وتُبثّ
+         * عبر UDP إلى 255.255.255.255 على المنفذين 9 و7، في خيط خلفي.
+         * يقبل العنوان بصيغ AA:BB:CC:DD:EE:FF أو AA-BB-CC-DD-EE-FF
+         * أو 12 رقماً سداسياً متصلاً؛ غير الصالح يُرفض بتنبيه.
+         */
+        @JavascriptInterface
+        public void wol(final String mac) {
+            final byte[] macBytes = parseMac(mac);
+            if (macBytes == null) {
+                toast("Invalid MAC address");
+                return;
+            }
+            final byte[] packet = new byte[102];
+            for (int i = 0; i < 6; i++) packet[i] = (byte) 0xFF;
+            for (int i = 0; i < 16; i++) {
+                System.arraycopy(macBytes, 0, packet, 6 + i * 6, 6);
+            }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    DatagramSocket socket = null;
+                    try {
+                        socket = new DatagramSocket();
+                        socket.setBroadcast(true);
+                        InetAddress broadcast =
+                                InetAddress.getByName("255.255.255.255");
+                        socket.send(new DatagramPacket(
+                                packet, packet.length, broadcast, 9));
+                        socket.send(new DatagramPacket(
+                                packet, packet.length, broadcast, 7));
+                        toast("Wake packet sent");
+                    } catch (Exception e) {
+                        toast("Wake failed: " + e.getClass().getSimpleName());
+                    } finally {
+                        if (socket != null) socket.close();
+                    }
+                }
+            }).start();
+        }
+
+        /* تحليل عنوان MAC إلى 6 بايتات، أو null عند أي صيغة غير صالحة */
+        private byte[] parseMac(String mac) {
+            if (mac == null) return null;
+            String hex = mac.trim().replace(":", "").replace("-", "");
+            if (hex.length() != 12) return null;
+            byte[] out = new byte[6];
+            for (int i = 0; i < 6; i++) {
+                try {
+                    out[i] = (byte) Integer.parseInt(
+                            hex.substring(i * 2, i * 2 + 2), 16);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            return out;
         }
 
         /**
