@@ -107,6 +107,10 @@ okPc('طلب محادثة بجسم JSON', () => {
   assert.strictEqual(r.headers['Content-Type'], 'application/json');
   assert.deepStrictEqual(JSON.parse(r.body), { bot_id: 'b1', text: 'مرحباً' });
 });
+okPc('معرّف بوت نصّي رقمي يُحوَّل إلى رقم (إصلاح HTTP 400)', () => {
+  assert.deepStrictEqual(app.pcChatBody('3', 'سلام'), { bot_id: 3, text: 'سلام' });
+  assert.deepStrictEqual(app.pcChatBody(3, 'سلام'), { bot_id: 3, text: 'سلام' });
+});
 okPc('جسم قرار الموافقة', () =>
   assert.deepStrictEqual(app.pcDecisionBody('approve'), { decision: 'approve' }));
 okPc('قرار غير approve يُعامَل رفضاً', () =>
