@@ -174,6 +174,18 @@ class TestBotsAndChat(ServerFixture):
         self.assertEqual(roles, ["user", "assistant"])
         self.assertEqual(data["messages"][0]["content"], "سلام")
 
+    def test_chat_string_bot_id_accepted(self):
+        """معرّف نصّي رقمي (من عميل أقدم) يُقبَل ولا يعيد 400."""
+        self.make_server(MockProvider([ChatResult(text="ردّ الخادم")]))
+        bot_id = self.gateway.call(
+            lambda e: e.create_bot("محادث", "openrouter")
+        )
+        status, payload = self.request(
+            "POST", "/api/chat", {"bot_id": str(bot_id), "text": "سلام"}
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("reply", payload)
+
     def test_chat_unknown_bot_is_404(self):
         self.make_server()
         status, _ = self.request(
