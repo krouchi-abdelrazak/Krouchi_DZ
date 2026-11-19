@@ -560,6 +560,8 @@ class _Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 return self._send_json(400, {"error": f"جسم غير صالح: {exc}"})
             bot_id = body.get("bot_id")
+            if isinstance(bot_id, str) and bot_id.strip().lstrip("-").isdigit():
+                bot_id = int(bot_id)  # تسامح مع معرّف نصّي رقمي من عميل أقدم
             text = body.get("text")
             if (
                 not isinstance(bot_id, int)
