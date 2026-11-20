@@ -6,6 +6,7 @@ and the module must import without touching any Windows DLL.
 
 import sys
 import unittest
+from unittest import mock as umock
 
 sys.path.insert(0, __file__.rsplit("/tests/", 1)[0])
 
@@ -290,6 +291,115 @@ class TestMjpeg(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             list(iter_mjpeg_frames(Boom(), max_frames=1))
+
+
+class _FakePillowImage:
+    """بديل صورة Pillow: يسجّل resize/save ويكتب بايتات JPEG وهمية."""
+
+    LANCZOS = 1
+
+    def __init__(self, width, height, mode="RGB"):
+        self.size = (width, height)
+        self.mode = mode
+        self.resized_to = None
+        self.saved = None
+
+    def convert(self, mode):
+        return _FakePillowImage(self.size[0], self.size[1], mode)
+
+    def resize(self, size, resample):
+        self.resized_to = (size, resample)
+        return _FakePillowImage(size[0], size[1], self.mode)
+
+    def save(self, out, format=None, quality=None):
+        self.saved = {"format": format, "quality": quality}
+        out.write(b"\xff\xd8fake-jpeg")
+
+
+class _FakeImageGrab:
+    """بديل PIL.ImageGrab: يعيد صورة وهمية بمقاس ثابت ويسجّل النداء."""
+
+    def __init__(self, width=2000, height=1000):
+        self._size = (width, height)
+        self.calls = []
+        self.last_image = None
+
+    def grab(self, all_screens=False):
+        self.calls.append(all_screens)
+        self.last_image = _FakePillowImage(*self._size)
+        return self.last_image
+
+
+class TestWindowsPillowPath(unittest.TestCase):
+    """مسار Pillow/ImageGrab في WindowsScreenSource — بلا ويندوز:
+
+    يُبنى الكائن بـobject.__new__ (تخطّي __init__ الذي يرفض غير
+    ويندوز) وتُحقَن وحدتا Pillow وهميتان عبر remote._import_pillow.
+    """
+
+    def make_source(self, vw=1024, vh=768):
+        src = object.__new__(remote.WindowsScreenSource)
+        src._vw, src._vh = vw, vh
+        src._size_cache = None
+        return src
+
+    def test_grab_uses_imagegrab_scales_and_encodes(self):
+        grab = _FakeImageGrab(2000, 1000)
+        src = self.make_source()
+        with umock.patch.object(
+            remote, "_import_pillow", return_value=(_FakePillowImage, grab)
+        ):
+            data = src.grab_jpeg(max_width=1000, quality=42)
+        self.assertEqual(data, b"\xff\xd8fake-jpeg")
+        self.assertEqual(grab.calls, [True])  # all_screens=True جرّب أولاً
+        self.assertEqual(grab.last_image.resized_to, ((1000, 500), 1))
+
+    def test_grab_passes_quality_and_skips_resize_when_small(self):
+        grab = _FakeImageGrab(800, 600)
+        src = self.make_source()
+        with umock.patch.object(
+            remote, "_import_pillow", return_value=(_FakePillowImage, grab)
+        ):
+            src.grab_jpeg(max_width=1280, quality=77)
+        self.assertIsNone(grab.last_image.resized_to)
+        self.assertEqual(
+            grab.last_image.saved, {"format": "JPEG", "quality": 77}
+        )
+
+    def test_size_prefers_imagegrab(self):
+        grab = _FakeImageGrab(1920, 1080)
+        src = self.make_source(vw=1024, vh=768)
+        with umock.patch.object(
+            remote, "_import_pillow", return_value=(_FakePillowImage, grab)
+        ):
+            self.assertEqual(src.size(), (1920, 1080))
+            self.assertEqual(src.size(), (1920, 1080))  # مخزّن: لقطة واحدة
+        self.assertEqual(len(grab.calls), 1)
+
+    def test_size_falls_back_to_metrics_without_pillow(self):
+        src = self.make_source(vw=1024, vh=768)
+        with umock.patch.object(remote, "_import_pillow", return_value=None):
+            self.assertEqual(src.size(), (1024, 768))
+
+    def test_grab_falls_back_to_gdiplus_without_pillow(self):
+        src = self.make_source(vw=800, vh=600)
+        with umock.patch.object(remote, "_import_pillow", return_value=None), \
+            umock.patch.object(
+                remote.WindowsScreenSource, "_capture_hbitmap",
+                return_value=("hb", "sdc", "mdc"),
+            ) as cap, \
+            umock.patch.object(
+                remote.WindowsScreenSource, "_encode_jpeg_gdiplus",
+                return_value=b"gdip-jpeg",
+            ) as enc, \
+            umock.patch.object(
+                remote.WindowsScreenSource, "_release_capture"
+            ) as rel:
+            data = src.grab_jpeg(max_width=400, quality=55)
+        self.assertEqual(data, b"gdip-jpeg")
+        cap.assert_called_once_with(400, 300)  # تصغير بنفس النسبة
+        enc.assert_called_once_with("hb", 55)
+        rel.assert_called_once_with("hb", "sdc", "mdc")
 
 
 class TestPlatformFactories(unittest.TestCase):
