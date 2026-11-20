@@ -706,6 +706,15 @@ okScr('screenStreamUrl: ترميز الرمز وخيارات ومنفذ مخصص
     app.screenStreamUrl({ host: '192.168.1.10', token: 't' }),
     'http://192.168.1.10:8765/api/screen/stream?token=t&w=1280&q=60&fps=10');
 });
+okScr('screenFramePath: مسار الإطار المفرد والافتراضيات (v3.3.2)', () => {
+  assert.strictEqual(
+    app.screenFramePath({ w: 1280, q: 60 }),
+    '/api/screen/frame?w=1280&q=60');
+  assert.strictEqual(app.screenFramePath(), '/api/screen/frame?w=1280&q=60');
+  assert.strictEqual(
+    app.screenFramePath({ w: 640, q: 45 }),
+    '/api/screen/frame?w=640&q=45');
+});
 okScr('normPoint: الزوايا والمركز والربع', () => {
   const rect = { left: 100, top: 50, width: 400, height: 200 };
   assert.deepStrictEqual(app.normPoint(100, 50, rect), { x: 0, y: 0 });

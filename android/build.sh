@@ -9,7 +9,7 @@ BT="$SDK/build-tools/34.0.0"
 AJAR="$SDK/platforms/android-34/android.jar"
 export JAVA_HOME="$HOME/workspace/tools/jdk"
 export PATH="$JAVA_HOME/bin:$PATH"
-VERSION="3.3.1"
+VERSION="3.3.2"
 OUT="$PROJ/Krouchi_DZ_v${VERSION}.apk"
 BUILD="$PROJ/build"
 
