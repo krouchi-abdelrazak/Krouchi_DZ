@@ -2,8 +2,9 @@
 
 يربط: قاعدة البيانات المحلية، ملف إعدادات المزوّدين، مخزن الأسرار،
 ووسيط الموافقات. إرسال رسالة لبوت يحفظ الذاكرة لكل بوت في SQLite،
-وإذا طلب النموذج أدوات (read_file / write_file / run_command) نُفّذت
-عبر الوسيط فقط، وأُعيدت نتائجها للنموذج ليكمل ردّه.
+وإذا طلب النموذج أدوات (read_file / write_file / run_command /
+open_target / window_action) نُفّذت عبر الوسيط فقط، وأُعيدت نتائجها
+للنموذج ليكمل ردّه. وحدها list_windows قراءة محضة فتُنفَّذ بلا وسيط.
 
 ونقطة الدخول الأولى لإدخال API هي add_api(base_url, api_key):
 أي عنوان + أي مفتاح، فيسجّل المزوّد ويكتشف نماذجه بنفسه (discovery.py).
@@ -18,6 +19,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import control
 from .broker import ApprovalBroker
 from .config import ProviderConfig, load_providers, save_providers
 from .db import Database
@@ -385,7 +387,23 @@ class ChatEngine:
             return {"ok": False, "error": f"بوت غير موجود: {bot_id}"}
         if on_event is not None:
             on_event("tool", action)
-        decision = self.broker.authorize(bot, action, params, task_id=task_id)
+        if action == "list_windows":
+            # قراءة محضة (سرد نوافذ): لا تغيّر شيئاً على الجهاز،
+            # فتُنفَّذ مباشرة بلا وسيط موافقات — وتعمل في كل الأنماط.
+            try:
+                output = self._do_list_windows(params)
+            except Exception as exc:
+                return {"ok": False, "error": f"فشل تنفيذ {action}: {exc}"}
+            return {"ok": True, "output": output}
+        # أداة window_action تُسجَّل عند الوسيط بنوع تحكّم الهاتف نفسه
+        # «window_control» — بطاقة موافقة وسجلّ تدقيق واحد للمسارين.
+        broker_action = "window_control" if action == "window_action" else action
+        decision = self.broker.authorize(
+            bot, broker_action, params, task_id=task_id,
+            # مسح المحادثة لا رجعة فيه: يُسأل المستخدم دائماً ولو كان
+            # وضع البوت «full» (سابقة «power» نفسها عبر force_ask).
+            force_ask=action == "clear_conversation",
+        )
         if not decision.allowed:
             if on_event is not None:
                 on_event("tool_denied", f"{action}: {decision.reason}")
@@ -397,6 +415,12 @@ class ChatEngine:
                 output = self._do_write_file(params)
             elif action == "run_command":
                 output = self._do_run_command(params)
+            elif action == "open_target":
+                output = self._do_open_target(params)
+            elif action == "window_action":
+                output = self._do_window_action(params)
+            elif action == "clear_conversation":
+                output = self._do_clear_conversation(bot_id)
             else:
                 return {"ok": False, "error": f"إجراء غير معروف: {action}"}
         except Exception as exc:  # خطأ تنفيذ يُعاد للنموذج/المستخدم كنتيجة
@@ -433,6 +457,62 @@ class ChatEngine:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(params.get("content", ""), encoding="utf-8")
         return f"كُتب الملف: {path} ({path.stat().st_size} بايت)"
+
+    @staticmethod
+    def _do_open_target(params: dict) -> str:
+        # نفس تنفيذ مسار تحكّم الهاتف (/api/open): control.open_target
+        # يفتح الهدف بالتطبيق الافتراضي للنظام فيظهر مرئياً على الشاشة.
+        target = params.get("target")
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError("هدف فتح فارغ")
+        target = target.strip()
+        control.open_target(target)
+        return f"فُتح الهدف على الحاسوب: {target}"
+
+    @staticmethod
+    def _do_list_windows(params: dict) -> str:
+        # نفس تنفيذ مسار تحكّم الهاتف (GET /api/windows): control.list_windows
+        windows = control.list_windows()
+        if not windows:
+            return "لا نوافذ مفتوحة ذات عناوين الآن"
+        lines = [f"النوافذ المفتوحة ({len(windows)}):"]
+        for window in windows:
+            lines.append(f"- {window.get('id')}: {window.get('title')}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _do_window_action(params: dict) -> str:
+        # نفس تنفيذ مسار تحكّم الهاتف (POST /api/window) وبنفس
+        # التحقّق: معرّف رقمي (نصّ رقمي يُحوَّل) وفعل من WINDOW_ACTIONS،
+        # ثم control.default_window_executor نفسه.
+        window_id = params.get("id")
+        if isinstance(window_id, str) and window_id.strip().lstrip("-").isdigit():
+            window_id = int(window_id)
+        action = params.get("action")
+        if (
+            not isinstance(window_id, int)
+            or isinstance(window_id, bool)
+            or action not in control.WINDOW_ACTIONS
+        ):
+            raise ValueError(
+                "الحقول المطلوبة: id (رقم) و action "
+                "(focus|minimize|maximize|close)"
+            )
+        control.default_window_executor(window_id, action)
+        labels = {
+            "focus": "فُعّلت النافذة وأُظهرت في المقدمة",
+            "minimize": "صُغّرت النافذة",
+            "maximize": "كُبّرت النافذة",
+            "close": "أُغلقت النافذة",
+        }
+        return f"{labels[action]}: {window_id}"
+
+    def _do_clear_conversation(self, bot_id: int) -> str:
+        # مسح نهائي لسجلّ هذا البوت وحده (db.clear_bot_messages)؛
+        # الموافقة مرّت عبر الوسيط بـ force_ask قبل الوصول إلى هنا،
+        # والسجلّ يُقرأ من القاعدة في كل جولة فتسري من الجولة التالية.
+        deleted = self.db.clear_bot_messages(bot_id)
+        return f"مُسح سجلّ محادثة هذا البوت نهائياً ({deleted} رسالة)"
 
     @staticmethod
     def _do_run_command(params: dict) -> str:

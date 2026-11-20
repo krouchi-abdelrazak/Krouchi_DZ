@@ -54,6 +54,15 @@
   الحاسوب عبر remote.dispatch_input؛ حدث غير صالح = 400، ومنصّة
   لا تدعم الالتقاط/الحقن = 501.
 
+الإصدار 3.3.2 — إطار الشاشة المفرد (من عائلة التحكّم أيضاً):
+- GET  /api/screen/frame?w=&q= → {"image_b64", "format": "jpeg",
+  "width", "height"}: إطار واحد لكل طلب بمصادقة الترويسة حصراً،
+  يسحبه تطبيق الهاتف تباعاً عبر قناة طلباته العادية بدل بثّ MJPEG
+  في <img> — لأن أصل التطبيق https وهمي (krouchi.local) فيحجب
+  WebView البثَّ الصافي http:// كمختلط. طلبات الإطارات تُحسَب
+  مشاهدةً في "screen_viewers" ما دام آخر إطار قبل أقلّ من 3 ثوانٍ.
+  يبقى /api/screen/stream كما هو دون مساس.
+
 دلالات الموافقة في /api/chat (قرار التصميم الموثّق):
 المحادثة تعمل على الحاسوب عبر محرّكه؛ فإذا طلب بوت بنمط ask إجراءً
 سُجّل الطلب في سجلّ الموافقات المعلّقة المشترك وبقيت المحادثة معلّقة
@@ -371,6 +380,10 @@ class CompanionServer:
         self.input_sink = input_sink
         self._screen_lock = threading.Lock()
         self._screen_viewers_count = 0
+        # زمن آخر إطار مفرد خُدِم (/api/screen/frame — الإصدار 3.3.2):
+        # ساحب الإطارات في تطبيق الهاتف يُحسَب مشاهداً ما دام الإطار
+        # الأخير حديثاً (انظر خاصية screen_viewers).
+        self._last_frame_at: float | None = None
         self.file_max_bytes = int(file_max_bytes)
         self.upload_max_bytes = int(upload_max_bytes)
         # -- مهام البوتات الخلفية ------------------------------------------
@@ -537,15 +550,29 @@ class CompanionServer:
 
     @property
     def screen_viewers(self) -> int:
-        """عدد بثوث الشاشة النشطة الآن (يظهر في GET /api/status)."""
+        """عدد مشاهدي الشاشة الآن (يظهر في GET /api/status): بثوث
+        MJPEG النشطة + 1 ما دام آخر طلب إطار مفرد قبل أقلّ من 3
+        ثوانٍ — ساحب الإطارات في تطبيق الهاتف (الإصدار 3.3.2) لا
+        يُمسك اتصالاً مفتوحاً كالبثّ، فحداثة إطاره هي دليل المشاهدة."""
         with self._screen_lock:
-            return self._screen_viewers_count
+            viewers = self._screen_viewers_count
+            if (
+                self._last_frame_at is not None
+                and time.monotonic() - self._last_frame_at < 3.0
+            ):
+                viewers += 1
+            return viewers
 
     def _note_screen_stream(self, delta: int) -> None:
         with self._screen_lock:
             self._screen_viewers_count = max(
                 0, self._screen_viewers_count + delta
             )
+
+    def _note_screen_frame(self) -> None:
+        """يُسجّل زمن خدمة إطار مفرد الآن (لعدّاد screen_viewers)."""
+        with self._screen_lock:
+            self._last_frame_at = time.monotonic()
 
     # -- قشرة تطبيق الويب -------------------------------------------------
     def static_file(self, name: str) -> tuple[bytes, str] | None:
@@ -845,7 +872,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/api/print", "/api/upload", "/api/clipboard",
             "/api/volume", "/api/windows", "/api/window",
             "/api/processes", "/api/process/kill",
-            "/api/screen/stream", "/api/input",
+            "/api/screen/stream", "/api/screen/frame", "/api/input",
         ):
             if not srv.is_control_enabled():
                 return self._send_json(403, {"error": "control disabled"})
@@ -983,6 +1010,9 @@ class _Handler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/screen/stream":
             return self._serve_screen_stream(query)
+
+        if method == "GET" and path == "/api/screen/frame":
+            return self._serve_screen_frame(query)
 
         if method == "POST" and path == "/api/input":
             body, error = self._body_or_400()
@@ -1233,6 +1263,50 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send_json(400, {"error": f"جسم غير صالح: {exc}"})
             return None, True
+
+    def _serve_screen_frame(self, query) -> None:
+        """إطار واحد من شاشة الحاسوب: JPEG داخل JSON (base64).
+
+        بديل بثّ MJPEG لتطبيق الهاتف (الإصدار 3.3.2): التطبيق يخدم
+        واجهته من أصل https وهمي (https://krouchi.local/) ولا يضبط
+        وضع المحتوى المختلط، فيحجب WebView بثّ <img> الصافي http://
+        كمختلط — والبثّ هو الميزة الوحيدة المحمَّلة كمورد ويب فرعي؛
+        كل ما عداه يمرّ عبر الجسر الأصيل فيعمل. فيسحب التطبيق
+        الإطارات واحداً واحداً عبر هذه النقطة بقناة الطلبات العادية
+        نفسها (مصادقة الترويسة حصراً — لا استثناء ?token= هنا).
+        المعاملات: w (أقصى عرض، 1280 افتراضياً، بين 320 و1920)،
+        q (جودة JPEG، 60، بين 30 و90) — بنفس أسلوب تحليل البثّ.
+        مصدر غير مدعوم على هذه المنصّة = 501. كل إطار يُخدَم
+        يُسجَّل زمنه عند الخادم لعدّاد screen_viewers في /api/status.
+        """
+        srv = self._srv
+
+        def _param(name: str, default: int, low: int, high: int) -> int:
+            raw = (query.get(name) or [""])[0]
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                value = default
+            return max(low, min(high, value))
+
+        max_width = _param("w", 1280, 320, 1920)
+        quality = _param("q", 60, 30, 90)
+        source = srv.get_screen_source()
+        try:
+            width, height = source.size()
+            data = source.grab_jpeg(max_width=max_width, quality=quality)
+        except RuntimeError as exc:
+            return self._send_json(501, {"error": str(exc)})
+        srv._note_screen_frame()
+        return self._send_json(
+            200,
+            {
+                "image_b64": base64.b64encode(data).decode("ascii"),
+                "format": "jpeg",
+                "width": width,
+                "height": height,
+            },
+        )
 
     def _serve_screen_stream(self, query) -> None:
         """بثّ شاشة الحاسوب إلى الهاتف: MJPEG بأجزاء multipart متتابعة.

@@ -246,6 +246,20 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def clear_bot_messages(self, bot_id: int) -> int:
+        """يمسح كل رسائل محادثات هذا البوت نهائياً ويعيد عددها.
+
+        تبقى صفوف المحادثات نفسها — تُفرَّغ الرسائل فقط، فتبدأ
+        الجولة التالية من سجلّ فارغ. رسائل البوتات الأخرى لا تُمسّ.
+        """
+        cur = self.conn.execute(
+            "DELETE FROM messages WHERE conversation_id IN "
+            "(SELECT id FROM conversations WHERE bot_id = ?)",
+            (bot_id,),
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     # -- سجلّ التدقيق -------------------------------------------------------
     def log_audit(
         self, bot_id: int | None, action: str, decision: str,

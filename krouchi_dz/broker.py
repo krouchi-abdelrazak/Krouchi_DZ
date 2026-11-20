@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 ACTIONS = (
     "read_file", "write_file", "run_command", "open_target", "power",
     "print_file", "upload_file", "set_clipboard",
-    "window_control", "kill_process",
+    "window_control", "kill_process", "clear_conversation",
 )
 READONLY_ALLOWED = ("read_file",)
 
@@ -106,6 +106,8 @@ def request_summary(request: "ApprovalRequest") -> str:
         return f"نافذة {params.get('id', '؟')}: {params.get('action', '؟')}"
     if request.action == "kill_process":
         return f"إنهاء العملية {params.get('pid', '؟')}"
+    if request.action == "clear_conversation":
+        return "مسح كامل محادثة هذا البوت مع المستخدم نهائياً"
     return json.dumps(params, ensure_ascii=False)
 
 

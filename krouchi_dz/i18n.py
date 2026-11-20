@@ -34,6 +34,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "action.read_file": "قراءة ملف",
         "action.write_file": "كتابة ملف",
         "action.run_command": "تشغيل أمر",
+        "action.open_target": "فتح هدف",
+        "action.list_windows": "سرد النوافذ",
+        "action.window_control": "تحكّم بنافذة",
+        "action.clear_conversation": "مسح المحادثة",
         "decision.allowed": "سماح ✓",
         "decision.denied": "رفض ✗",
         # -- أخطاء المحرّك كما تعرضها الواجهة --------------------------------------
@@ -164,6 +168,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "action.read_file": "Read file",
         "action.write_file": "Write file",
         "action.run_command": "Run command",
+        "action.open_target": "Open target",
+        "action.list_windows": "List windows",
+        "action.window_control": "Window control",
+        "action.clear_conversation": "Clear conversation",
         "decision.allowed": "Allowed ✓",
         "decision.denied": "Denied ✗",
         # -- Engine errors as shown by the UI ------------------------------------------
