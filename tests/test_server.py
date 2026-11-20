@@ -60,6 +60,12 @@ class ServerFixture(unittest.TestCase):
 
         self.gateway = EngineGateway(factory)
         self.addCleanup(self.gateway.close)
+        # تحويل v3.4 (الواجهة المشتركة): المحادثة والمهام تُحسَمان
+        # منها وحدها، فتضبط التركيبة واجهة صريحة في قاعدة البيانات
+        # المشتركة (ترثها محرّكات المهام على مجلد البيانات نفسه).
+        self.gateway.call(
+            lambda e: e.set_shared_api("openrouter", "shared-model")
+        )
         self.server = CompanionServer(
             engine_call=self.gateway.call,
             registry=self.registry,
@@ -153,9 +159,32 @@ class TestBotsAndChat(ServerFixture):
         bot = data["bots"][0]
         self.assertEqual(bot["id"], bot_id)
         self.assertEqual(bot["name"], "مساعد")
+        # تحويل v3.4: الحمولة تعرض الواجهة المشتركة (مزوّد/نموذج
+        # التركيبة) لا قيم البوت المخزَّنة («m-1») — الشكل لم يتغيّر.
         self.assertEqual(bot["provider"], "openrouter")
-        self.assertEqual(bot["model"], "m-1")
+        self.assertEqual(bot["model"], "shared-model")
         self.assertEqual(bot["mode"], "ask")
+        # أفاتار افتراضي لبوت جديد: "" (أحادي الحرف عند العميل).
+        self.assertEqual(bot["avatar"], "")
+
+    def test_bots_list_carries_gallery_avatar(self):
+        self.make_server()
+        self.gateway.call(
+            lambda e: e.create_bot(
+                "بصورة", "openrouter", avatar="bot_2.png"
+            )
+        )
+        self.gateway.call(
+            lambda e: e.create_bot(
+                "قديم", "openrouter", avatar="🤖"
+            )
+        )
+        status, data = self.request("GET", "/api/bots")
+        self.assertEqual(status, 200)
+        avatars = {b["name"]: b["avatar"] for b in data["bots"]}
+        self.assertEqual(avatars["بصورة"], "bot_2.png")
+        # القيمة القديمة تمرّ كما هي — العميل يفسّرها غير معرضية.
+        self.assertEqual(avatars["قديم"], "🤖")
 
     def test_chat_roundtrip_and_history(self):
         self.make_server(MockProvider([ChatResult(text="ردّ الخادم")]))
@@ -343,6 +372,12 @@ class TestStaticShell(ServerFixture):
     def test_each_shell_file_both_shapes(self):
         self.make_server()
         for name, content_type in PWA_FILES.items():
+            if name.startswith("avatars/"):
+                # تحويل موثّق: صور المعرض لا تعيش داخل pwa/ في شجرة
+                # المصدر (مكانها assets/avatars) فلا تُقرأ من مجلد
+                # القشرة هنا — تُغطّيها TestAvatarStaticShell بمجلد
+                # قشرة مؤقت يحملها، وتُخدَم هنا من المعرض عند الطلب.
+                continue
             expected = (self.pwa_dir / name).read_bytes()
             for prefix in ("/", "/app/"):
                 status, headers, raw = self.request_raw(
@@ -393,6 +428,42 @@ class TestStaticShell(ServerFixture):
         self.assertEqual(status, 404)
 
 
+class TestAvatarStaticShell(ServerFixture):
+    """صور معرض الأفاتار: تُخدَم بلا رمز من مجلد القشرة المؤقت،
+    وبالقائمة البيضاء الستّية فقط — غيرها 404 مهما وُجد على القرص."""
+
+    DUMMY = b"\x89PNG-dummy-avatar-bytes"
+
+    def make_avatar_server(self):
+        pwa = Path(self.tmp.name) / "pwa_with_avatars"
+        (pwa / "avatars").mkdir(parents=True)
+        (pwa / "index.html").write_bytes(b"<html>shell</html>")
+        (pwa / "avatars" / "bot_1.png").write_bytes(self.DUMMY)
+        # ملف موجود على القرص لكنه خارج القائمة البيضاء الستّية.
+        (pwa / "avatars" / "bot_99.png").write_bytes(b"not-whitelisted")
+        return self.make_server(pwa_dir=pwa)
+
+    def test_avatar_both_shapes_200_png(self):
+        self.make_avatar_server()
+        for path in ("/avatars/bot_1.png", "/app/avatars/bot_1.png"):
+            status, headers, raw = self.request_raw("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(headers["content-type"], "image/png", path)
+            self.assertEqual(raw, self.DUMMY, path)
+
+    def test_non_gallery_avatar_names_are_404(self):
+        self.make_avatar_server()
+        for path in (
+            "/avatars/bot_99.png",   # موجود على القرص لكن غير معرضي
+            "/app/avatars/bot_99.png",
+            "/avatars/app.js",       # اسم قشرة عادي تحت avatars/
+            "/avatars/../app.js",    # عبور لا يطابق أي شكل مسموح
+            "/app/avatars/../../krouchi_dz/server.py",
+        ):
+            status, _, _ = self.request_raw("GET", path)
+            self.assertEqual(status, 404, path)
+
+
 class TestPwaDirResolution(ServerFixture):
     """تحديد مجلد القشرة: متغيّر البيئة أولاً، والصريح عند البناء."""
 
@@ -440,6 +511,33 @@ class TestMissingPwaDir(ServerFixture):
         self.assertTrue(data["ok"])
         status, _ = self.request("GET", "/api/ping", token=None)
         self.assertEqual(status, 401)
+
+
+class TestControlErrorArmor(ServerFixture):
+    """درع _route_control (3.4): استثناء منفّذ/قائمة تحكّم = 500 JSON
+    بجسم خطأ، لا اتصال مقطوع — والخادم يبقى حياً لطلب تالٍ."""
+
+    def test_failing_window_lister_is_500_json_and_server_survives(self):
+        def boom():
+            raise RuntimeError("تعذّر تعداد النوافذ")
+
+        self.make_server(window_lister=boom)
+        status, data = self.request("GET", "/api/windows")
+        self.assertEqual(status, 500)
+        self.assertEqual(data, {"error": "تعذّر تعداد النوافذ"})
+        # طلب تالٍ على اتصال جديد يعمل كالمعتاد
+        status, data = self.request("GET", "/api/ping")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["ok"])
+
+    def test_failing_process_lister_is_500_json(self):
+        def boom():
+            raise OSError("انفجرت القائمة")
+
+        self.make_server(process_lister=boom)
+        status, data = self.request("GET", "/api/processes")
+        self.assertEqual(status, 500)
+        self.assertEqual(data["error"], "انفجرت القائمة")
 
 
 if __name__ == "__main__":

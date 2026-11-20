@@ -179,6 +179,88 @@ class TestValidateInputEvent(unittest.TestCase):
             self.fail("expected ValueError")
 
 
+class TestComboEvents(unittest.TestCase):
+    """نوع الحدث combo (3.4): قائمة مفاتيح معدِّلة + مفتاح أخير."""
+
+    def test_valid_combo_normalized(self):
+        ev = validate_input_event(
+            {"type": "combo", "keys": [" CTRL ", "C"]})
+        self.assertEqual(ev, {"type": "combo", "keys": ["ctrl", "c"]})
+
+    def test_valid_combo_variants(self):
+        cases = [
+            (["ctrl", "shift", "esc"], ["ctrl", "shift", "esc"]),
+            (["alt", "f4"], ["alt", "f4"]),
+            (["win", "r"], ["win", "r"]),
+            (["ctrl", "alt", "shift", "win", "printscreen"],
+             ["ctrl", "alt", "shift", "win", "printscreen"]),
+            (["shift", "5"], ["shift", "5"]),
+        ]
+        for raw, expected in cases:
+            ev = validate_input_event({"type": "combo", "keys": raw})
+            self.assertEqual(ev["keys"], expected, raw)
+
+    def test_printscreen_is_a_key_name(self):
+        self.assertEqual(remote._VK_NAMED["printscreen"], 0x2C)
+        ev = validate_input_event({"type": "key", "key": "printscreen"})
+        self.assertEqual(ev["key"], "printscreen")
+        ev = validate_input_event({"type": "key", "key": "ctrl+printscreen"})
+        self.assertEqual(ev["key"], "ctrl+printscreen")
+
+    def assertBadCombo(self, keys):
+        with self.assertRaises(ValueError):
+            validate_input_event({"type": "combo", "keys": keys})
+
+    def test_reject_modifier_only(self):
+        self.assertBadCombo(["ctrl", "shift"])
+        self.assertBadCombo(["ctrl", "alt"])
+
+    def test_reject_unknown_key(self):
+        self.assertBadCombo(["ctrl", "banana"])
+        self.assertBadCombo(["ctrl", "!"])
+        self.assertBadCombo(["ctrl", "ab"])
+
+    def test_reject_duplicate_modifier(self):
+        self.assertBadCombo(["ctrl", "ctrl", "c"])
+        self.assertBadCombo(["shift", "ctrl", "shift", "a"])
+
+    def test_reject_wrong_sizes_and_shapes(self):
+        self.assertBadCombo(["ctrl"])                       # أقل من مفتاحين
+        self.assertBadCombo(
+            ["ctrl", "alt", "shift", "win", "ctrl", "c"])   # أكثر من خمسة
+        self.assertBadCombo("ctrl+c")                       # ليست قائمة
+        self.assertBadCombo(None)
+        self.assertBadCombo(["c", "ctrl"])                  # الأول ليس معدِّلاً
+        self.assertBadCombo(["ctrl", 5])                    # عنصر غير نصّي
+        self.assertBadCombo(["ctrl", " "])                  # مفتاح فارغ
+
+    def test_combo_errors_are_arabic(self):
+        try:
+            validate_input_event({"type": "combo", "keys": ["ctrl", "ctrl", "c"]})
+        except ValueError as exc:
+            self.assertTrue(any("؀" <= ch <= "ۿ" for ch in str(exc)))
+        else:
+            self.fail("expected ValueError")
+
+    def test_dispatch_combo_to_fake_sink(self):
+        sink = FakeInputSink()
+        result = dispatch_input(
+            sink, None, {"type": "combo", "keys": ["CTRL", "c"]})
+        self.assertEqual(result, {"ok": True, "type": "combo"})
+        self.assertEqual(sink.calls, [("combo", ("ctrl", "c"))])
+
+    def test_invalid_combo_reaches_no_sink(self):
+        sink = FakeInputSink()
+        with self.assertRaises(ValueError):
+            dispatch_input(sink, None, {"type": "combo", "keys": ["ctrl"]})
+        self.assertEqual(sink.calls, [])
+
+    def test_null_sink_combo_raises(self):
+        sink = NullInputSink()
+        with self.assertRaises(RuntimeError):
+            sink.combo(["ctrl", "c"])
+
+
 class TestDispatchInput(unittest.TestCase):
     SIZE = (800, 600)
 

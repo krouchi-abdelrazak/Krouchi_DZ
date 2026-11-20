@@ -25,6 +25,10 @@ class EngineFixture(unittest.TestCase):
             ask_timeout=ask_timeout,
             provider_factory=lambda cfg, key: self.mock,
         )
+        # تحويل v3.4 (الواجهة المشتركة): الإرسال يُحسَم من الواجهة
+        # المشتركة وحدها، فتضبط التركيبة واجهة صريحة يعمل بها كل
+        # بوتات هذه الاختبارات مهما كان مزوّدها/نموذجها المخزَّنان.
+        engine.set_shared_api("openrouter", "fixture-model")
         self.addCleanup(engine.close)
         self.addCleanup(self.tmp.cleanup)
         return engine
@@ -41,10 +45,11 @@ class TestChatMemory(EngineFixture):
         history = engine.history(bot_id)
         self.assertEqual([m["role"] for m in history], ["user", "assistant"])
         self.assertEqual(history[0]["content"], "سلام")
-        # التعليمات النظامية وصلت للمزوّد في أول الرسائل
+        # التعليمات النظامية وصلت للمزوّد في أول الرسائل — بعد
+        # التوجيه المدمج (v3.4) الذي يتصدّر محتوى النظام دائماً.
         sent = self.mock.calls[0]["messages"]
         self.assertEqual(sent[0]["role"], "system")
-        self.assertEqual(sent[0]["content"], "كن ودوداً")
+        self.assertTrue(sent[0]["content"].endswith("\n\nكن ودوداً"))
 
     def test_memory_survives_new_engine_instance(self):
         engine = self.make_engine(MockProvider([ChatResult(text="ردّ أول")]))

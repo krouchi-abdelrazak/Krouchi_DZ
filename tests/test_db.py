@@ -36,6 +36,31 @@ class TestDatabase(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.db.create_bot("بوت", "openrouter", approval_mode="sometimes")
 
+    def test_bot_default_avatar_is_empty_monogram(self):
+        # بوت جديد بلا أفاتار صريح: "" (أحادي الحرف عند العرض)،
+        # لا الإيموجي الافتراضي القديم "🤖".
+        bot_id = self.db.create_bot("بلا صورة", "openrouter")
+        self.assertEqual(self.db.get_bot(bot_id)["avatar"], "")
+
+    def test_bot_gallery_avatar_round_trip_and_update(self):
+        bot_id = self.db.create_bot(
+            "بصورة", "openrouter", avatar="bot_1.png"
+        )
+        self.assertEqual(self.db.get_bot(bot_id)["avatar"], "bot_1.png")
+        self.db.update_bot(bot_id, avatar="bot_4.png")
+        self.assertEqual(self.db.get_bot(bot_id)["avatar"], "bot_4.png")
+        # والعودة إلى «بلا صورة» قيمة صريحة أيضاً ("" ليست None).
+        self.db.update_bot(bot_id, avatar="")
+        self.assertEqual(self.db.get_bot(bot_id)["avatar"], "")
+
+    def test_bot_legacy_emoji_avatar_still_stored_verbatim(self):
+        # صفوف قديمة لا تنكسر: الإيموجي يُخزَّن كما هو ويُفسَّر
+        # «غير معرضي» وقت العرض فقط (انظر avatars.is_gallery_avatar).
+        bot_id = self.db.create_bot(
+            "قديم", "openrouter", avatar="🔎"
+        )
+        self.assertEqual(self.db.get_bot(bot_id)["avatar"], "🔎")
+
     def test_messages_ordered_per_conversation(self):
         b1 = self.db.create_bot("أ", "groq")
         b2 = self.db.create_bot("ب", "groq")

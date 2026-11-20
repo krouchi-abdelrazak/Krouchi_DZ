@@ -421,6 +421,10 @@ class TestAddApi(DiscoveryFixture):
         bot_id = engine.create_bot(
             "بوت مكتشَف", result.provider, model=result.models[1]
         )
+        # تحويل v3.4 (الواجهة المشتركة): الإرسال يستعمل الواجهة
+        # المشتركة وحدها — تُضبَط هنا على المزوّد المكتشَف ونموذجه
+        # الثاني، فيصل للمزوّد النموذج نفسه كما كان قبل التحويل.
+        engine.set_shared_api(result.provider, result.models[1])
         reply = engine.send_message(bot_id, "سلام")
         self.assertEqual(reply, "ردّ من مزوّد مكتشَف")
         # النموذج المختار من القائمة المكتشفة هو ما وصل للمزوّد فعلاً

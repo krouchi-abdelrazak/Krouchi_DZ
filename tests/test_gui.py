@@ -104,6 +104,9 @@ class GuiFixture(unittest.TestCase):
         runner.wait_ready()
         runner.attach(self.root)
         self.addCleanup(runner.shutdown)
+        # تحويل v3.4 (الواجهة المشتركة): الإرسال يُحسَم منها وحدها،
+        # فتضبط التركيبة واجهة صريحة قبل أي محادثة عبر الواجهة.
+        runner.call(lambda e: e.set_shared_api("openrouter", "gui-model"))
         return runner
 
 
@@ -245,14 +248,22 @@ class TestAddApiDialog(GuiFixture):
 # نافذة البوت: إنشاء وتعديل
 # ======================================================================
 class TestBotDialog(GuiFixture):
+    # تحويل v3.4 (الواجهة المشتركة): لا منتقي مزوّد/نموذج في الحوار
+    # بعد — يعرض الواجهة الحالية سطراً للقراءة فقط، والإنشاء يحفظ
+    # لقطة مزوّد الواجهة المشتركة (من تركيبة الاختبار: openrouter)
+    # ونموذجاً مخزَّناً فارغاً، والتعديل لا يمسّهما.
     def test_create_bot_flow(self):
         runner = self.make_runner()
         dialog = BotDialog(self.root, runner)
-        self.pump_until(lambda: dialog.providers_loaded)
+        self.pump_until(lambda: dialog.shared_loaded)
+        # سطر القراءة فقط يعرض واجهة التركيبة المشتركة حرفياً.
+        self.assertEqual(
+            dialog.shared_label.cget("text"),
+            "الواجهة الحالية: openrouter — gui-model",
+        )
+        self.assertFalse(hasattr(dialog, "provider_combo"))
+        self.assertFalse(hasattr(dialog, "model_combo"))
         dialog.name_var.set("بوت الاختبار")
-        dialog.provider_var.set("openrouter")
-        dialog._on_provider_changed()
-        dialog.model_var.set("test-model-1")
         self.assertEqual(dialog.mode_var.get(), "اسأل")  # الافتراضي
         dialog.save()
         self.pump_until(lambda: dialog.saved)
@@ -260,9 +271,12 @@ class TestBotDialog(GuiFixture):
         self.assertEqual(len(bots), 1)
         bot = bots[0]
         self.assertEqual(bot["name"], "بوت الاختبار")
-        self.assertEqual(bot["provider_name"], "openrouter")
-        self.assertEqual(bot["model"], "test-model-1")
+        self.assertEqual(bot["provider_name"], "openrouter")  # لقطة المشتركة
+        self.assertEqual(bot["model"], "")
         self.assertEqual(bot["approval_mode"], "ask")
+        # بلا اختيار صورة: الأفاتار المحفوظ "" (أحادي الحرف).
+        self.assertEqual(bot["avatar"], "")
+        self.assertEqual(dialog.avatar_var.get(), "")
 
     def test_edit_bot_changes_mode_keeps_name(self):
         runner = self.make_runner()
@@ -271,7 +285,7 @@ class TestBotDialog(GuiFixture):
         )
         bot = runner.call(lambda e: e.db.get_bot(bot_id))
         dialog = BotDialog(self.root, runner, bot=bot)
-        self.pump_until(lambda: dialog.providers_loaded)
+        self.pump_until(lambda: dialog.shared_loaded)
         dialog.mode_var.set("قراءة فقط")
         dialog.save()
         self.pump_until(lambda: dialog.saved)

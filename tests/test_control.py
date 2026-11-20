@@ -8,9 +8,12 @@
 """
 
 import base64
+import ctypes
 import sys
+import tempfile
 import threading
 import time
+import types
 import unittest
 from pathlib import Path
 from unittest import mock as umock
@@ -106,7 +109,7 @@ class TestStatus(ControlFixture):
         status, data = self.request("GET", "/api/status")
         self.assertEqual(status, 200)
         self.assertEqual(data["app"], "Krouchi_DZ")
-        self.assertEqual(data["version"], "3.3.2")
+        self.assertEqual(data["version"], "3.4.0")
         self.assertTrue(data["os"])
         self.assertTrue(data["platform"])
         self.assertTrue(data["hostname"])
@@ -284,21 +287,6 @@ class TestPrintersAndPrint(ControlFixture):
         self.assertEqual(status, 200)
         self.assertEqual(
             data["printers"], [{"name": "طابعة المكتب", "is_default": True}]
-        )
-
-    def test_list_printers_windows_runner_parsing(self):
-        def fake_runner(argv):
-            self.assertIn("powershell", argv[0])
-            return 0, "HP Laser|True\nBrother|False\n"
-
-        with umock.patch.object(control, "IS_WINDOWS", True):
-            printers = control.list_printers(runner=fake_runner)
-        self.assertEqual(
-            printers,
-            [
-                {"name": "HP Laser", "is_default": True},
-                {"name": "Brother", "is_default": False},
-            ],
         )
 
     def test_print_approved(self):
@@ -637,6 +625,157 @@ class TestControlDisabled(ControlFixture):
         status, data = self.request("GET", "/api/tasks")
         self.assertEqual(status, 200)
         self.assertEqual(data["tasks"], [])
+
+
+class TestScreenshotPaths(unittest.TestCase):
+    """لقطة الشاشة (3.4): Pillow أولاً على ويندوز، وPowerShell احتياطياً."""
+
+    PNG_BYTES = b"\x89PNG\r\n\x1a\nfake-png"
+
+    def _pil_modules(self, grab):
+        pil = types.ModuleType("PIL")
+        grab_module = types.ModuleType("PIL.ImageGrab")
+        grab_module.grab = grab
+        pil.ImageGrab = grab_module
+        return {"PIL": pil, "PIL.ImageGrab": grab_module}
+
+    def test_pillow_path_returns_png_and_never_touches_powershell(self):
+        class FakeImage:
+            def save(self, buffer, format=None):
+                buffer.write(TestScreenshotPaths.PNG_BYTES)
+
+        def forbidden_run(*args, **kwargs):
+            raise AssertionError("PowerShell يجب ألا يعمل ما دامت Pillow تعمل")
+
+        modules = self._pil_modules(lambda: FakeImage())
+        fake_subprocess = types.SimpleNamespace(run=forbidden_run)
+        with umock.patch.dict(sys.modules, modules), \
+            umock.patch.object(control, "IS_WINDOWS", True), \
+            umock.patch.object(control, "subprocess", fake_subprocess):
+            result = control.take_screenshot()
+        self.assertEqual(result, (self.PNG_BYTES, "png"))
+
+    def test_powershell_fallback_when_pillow_missing(self):
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            tmp = Path(tempfile.gettempdir()) / "krouchi_screenshot.png"
+            tmp.write_bytes(b"powershell-png")
+            return types.SimpleNamespace(returncode=0)
+
+        blocked = {"PIL": None, "PIL.ImageGrab": None}
+        fake_subprocess = types.SimpleNamespace(run=fake_run)
+        with umock.patch.dict(sys.modules, blocked), \
+            umock.patch.object(control, "IS_WINDOWS", True), \
+            umock.patch.object(control, "subprocess", fake_subprocess):
+            result = control.take_screenshot()
+        self.assertEqual(result, (b"powershell-png", "png"))
+        script = captured["argv"][-1]
+        self.assertIn("Bitmap($b.Width, $b.Height)", script)
+        self.assertNotIn("Bitmap $b.Width", script)
+
+    def test_powershell_fallback_when_imagegrab_raises(self):
+        def bad_grab():
+            raise RuntimeError("لا سطح مكتب")
+
+        def fake_run(argv, **kwargs):
+            tmp = Path(tempfile.gettempdir()) / "krouchi_screenshot.png"
+            tmp.write_bytes(b"fallback-png")
+            return types.SimpleNamespace(returncode=0)
+
+        modules = self._pil_modules(bad_grab)
+        fake_subprocess = types.SimpleNamespace(run=fake_run)
+        with umock.patch.dict(sys.modules, modules), \
+            umock.patch.object(control, "IS_WINDOWS", True), \
+            umock.patch.object(control, "subprocess", fake_subprocess):
+            result = control.take_screenshot()
+        self.assertEqual(result, (b"fallback-png", "png"))
+
+    def test_non_windows_returns_none(self):
+        with umock.patch.object(control, "IS_WINDOWS", False):
+            self.assertIsNone(control.take_screenshot())
+
+
+class TestListProcessesTasklist(unittest.TestCase):
+    """عمليات ويندوز (3.4): tasklist CSV بدل PowerShell."""
+
+    CSV = (
+        '"chrome.exe","1234","Console","1","1,234,567 K"\r\n'
+        '"svchost.exe","888","Services","0","12,340 K"\r\n'
+        '"malformed row without commas"\r\n'
+        '"bad.exe","notapid","Console","1","5,000 K"\r\n'
+        '"tiny.exe","55","Console","1","512 K"\r\n'
+    )
+
+    def runner(self, argv):
+        self.assertEqual(argv, ["tasklist", "/FO", "CSV", "/NH"])
+        return 0, self.CSV
+
+    def test_parsing_sorting_and_malformed_skipped(self):
+        with umock.patch.object(control, "IS_WINDOWS", True):
+            processes = control.list_processes(runner=self.runner)
+        self.assertEqual(
+            processes,
+            [
+                {"pid": 1234, "name": "chrome.exe",
+                 "mem_mb": round(1234567 / 1024, 1)},
+                {"pid": 888, "name": "svchost.exe",
+                 "mem_mb": round(12340 / 1024, 1)},
+                {"pid": 55, "name": "tiny.exe", "mem_mb": 0.5},
+            ],
+        )
+
+    def test_limit_caps_after_sorting(self):
+        with umock.patch.object(control, "IS_WINDOWS", True):
+            processes = control.list_processes(runner=self.runner, limit=2)
+        self.assertEqual([p["pid"] for p in processes], [1234, 888])
+
+
+class TestPrintersParsing(unittest.TestCase):
+    """طابعات ويندوز (3.4): فكّ سجلّات PRINTER_INFO_2 من مخزن ctypes."""
+
+    def test_parse_records_from_fabricated_buffer(self):
+        names = ["HP Laser", "Brother DCP"]
+        name_buffers = [ctypes.create_unicode_buffer(n) for n in names]
+        entries = (control._PrinterInfo2 * len(names))()
+        for entry, name_buffer in zip(entries, name_buffers):
+            entry.pPrinterName = ctypes.addressof(name_buffer)
+        printers = control._parse_printer_records(
+            entries, len(names), "Brother DCP"
+        )
+        self.assertEqual(
+            printers,
+            [
+                {"name": "HP Laser", "is_default": False},
+                {"name": "Brother DCP", "is_default": True},
+            ],
+        )
+
+    def test_parse_records_zero_count_is_empty(self):
+        self.assertEqual(control._parse_printer_records(None, 0), [])
+
+    def test_list_printers_posix_lpstat_unchanged(self):
+        def fake_runner(argv):
+            if argv[1] == "-a":
+                return 0, (
+                    "HP accepting requests since Tue\n"
+                    "Brother accepting requests since Tue\n"
+                )
+            return 0, "system default destination: HP\n"
+
+        with umock.patch.object(control, "IS_WINDOWS", False), \
+            umock.patch.object(
+                control.shutil, "which", return_value="/usr/bin/lpstat"
+            ):
+            printers = control.list_printers(runner=fake_runner)
+        self.assertEqual(
+            printers,
+            [
+                {"name": "HP", "is_default": True},
+                {"name": "Brother", "is_default": False},
+            ],
+        )
 
 
 if __name__ == "__main__":
