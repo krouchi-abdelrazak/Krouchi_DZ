@@ -1,9 +1,18 @@
 package dz.krouchi.app;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -14,6 +23,8 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -47,8 +58,10 @@ public class MainActivity extends Activity {
 
     private static final String ASSET_HOST = "https://krouchi.local/";
     private static final String HOME_URL = ASSET_HOST + "index.html";
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
 
     private WebView webView;
+    private ValueCallback<Uri[]> filePathCallback;
     private final ExecutorService httpPool = Executors.newCachedThreadPool();
 
     @Override
@@ -86,13 +99,90 @@ public class MainActivity extends Activity {
                             return null;
                         }
                     }
+                    if (name.startsWith("avatars/bot_") && name.endsWith(".png")
+                            && !name.contains("..")
+                            && name.indexOf('/', 8) == -1) {
+                        String digits = name.substring("avatars/bot_".length(),
+                                name.length() - ".png".length());
+                        if (digits.length() >= 1 && digits.length() <= 2) {
+                            boolean allDigits = true;
+                            for (int i = 0; i < digits.length(); i++) {
+                                if (!Character.isDigit(digits.charAt(i))) {
+                                    allDigits = false;
+                                    break;
+                                }
+                            }
+                            if (allDigits) {
+                                try {
+                                    InputStream is = getAssets().open(name);
+                                    return new WebResourceResponse("image/png", null, is);
+                                } catch (IOException e) {
+                                    return null;
+                                }
+                            }
+                        }
+                    }
                 }
                 return null;
             }
         });
 
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView webView,
+                                             ValueCallback<Uri[]> callback,
+                                             FileChooserParams fileChooserParams) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                    filePathCallback = null;
+                }
+                filePathCallback = callback;
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                try {
+                    startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
+                } catch (Exception e) {
+                    if (filePathCallback != null) {
+                        filePathCallback.onReceiveValue(null);
+                        filePathCallback = null;
+                    }
+                    return false;
+                }
+                return true;
+            }
+        });
+
         webView.addJavascriptInterface(new Bridge(), "KrouchiBridge");
         webView.loadUrl(HOME_URL);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (filePathCallback == null) {
+                return;
+            }
+            Uri[] results = null;
+            if (resultCode == RESULT_OK && data != null) {
+                ClipData clipData = data.getClipData();
+                if (clipData != null) {
+                    int count = clipData.getItemCount();
+                    if (count > 0) {
+                        results = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            results[i] = clipData.getItemAt(i).getUri();
+                        }
+                    }
+                } else if (data.getData() != null) {
+                    results = new Uri[]{data.getData()};
+                }
+            }
+            ValueCallback<Uri[]> callback = filePathCallback;
+            filePathCallback = null;
+            callback.onReceiveValue(results);
+        }
     }
 
     @Override
@@ -132,6 +222,90 @@ public class MainActivity extends Activity {
                     Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
                 }
             });
+        }
+
+        @JavascriptInterface
+        public String saveFile(String name, String base64) {
+            try {
+                String safeName = sanitizeFileName(name);
+                byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues values = new ContentValues();
+                    values.put(MediaStore.Downloads.DISPLAY_NAME, safeName);
+                    values.put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+                    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                    values.put(MediaStore.Downloads.IS_PENDING, 1);
+                    Uri uri = getContentResolver().insert(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                    if (uri == null) {
+                        return "error: insert failed";
+                    }
+                    OutputStream os = null;
+                    try {
+                        os = getContentResolver().openOutputStream(uri);
+                        if (os == null) {
+                            return "error: openOutputStream failed";
+                        }
+                        os.write(bytes);
+                        os.flush();
+                    } finally {
+                        if (os != null) {
+                            try { os.close(); } catch (IOException ignored) {}
+                        }
+                    }
+                    ContentValues done = new ContentValues();
+                    done.put(MediaStore.Downloads.IS_PENDING, 0);
+                    getContentResolver().update(uri, done, null, null);
+                } else {
+                    File dir = Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS);
+                    if (dir != null && !dir.exists()) {
+                        //noinspection ResultOfMethodCallIgnored
+                        dir.mkdirs();
+                    }
+                    File outFile = new File(dir, safeName);
+                    FileOutputStream fos = null;
+                    try {
+                        fos = new FileOutputStream(outFile);
+                        fos.write(bytes);
+                        fos.flush();
+                    } finally {
+                        if (fos != null) {
+                            try { fos.close(); } catch (IOException ignored) {}
+                        }
+                    }
+                }
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, "تم الحفظ في التنزيلات",
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+                return "ok";
+            } catch (Exception e) {
+                String msg = e.getMessage();
+                return "error: " + (msg != null ? msg : e.getClass().getSimpleName());
+            }
+        }
+
+        private String sanitizeFileName(String name) {
+            if (name == null) {
+                return "download";
+            }
+            String n = name.trim();
+            // Take basename only: strip any directory components.
+            int slash = Math.max(n.lastIndexOf('/'), n.lastIndexOf('\\'));
+            if (slash >= 0 && slash + 1 < n.length()) {
+                n = n.substring(slash + 1);
+            } else if (slash >= 0) {
+                n = "";
+            }
+            n = n.trim();
+            if (n.isEmpty() || ".".equals(n) || "..".equals(n)) {
+                return "download";
+            }
+            return n;
         }
 
         @JavascriptInterface
