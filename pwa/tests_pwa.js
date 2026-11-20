@@ -358,21 +358,29 @@ ok('معرّف بوت نصّي رقمي يُحوَّل إلى رقم (إصلاح
 });
 /* ================= v3.2: tasks + full control helpers ================= */
 
-ok('v3.2 markup: tasks and control sections exist in index.html', () => {
+ok('v3.2 markup (v3.4-converted): kept tasks/control sections exist in index.html', () => {
   const html32 = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
   const ids = ['pc-tasks-wrap', 'task-bot', 'task-title', 'task-prompt',
     'task-create', 'task-status', 'pc-tasks-list', 'pc-task-detail',
     'task-detail-title', 'task-cancel', 'task-back', 'pc-control-wrap',
     'pc-status-fields', 'status-refresh', 'files-path', 'files-up',
     'files-list', 'files-status', 'upload-input', 'upload-status',
-    'printer-select', 'printers-list', 'run-input', 'run-btn', 'run-output',
-    'open-input', 'open-btn', 'shot-btn', 'shot-status', 'shot-img',
-    'clip-text', 'clip-get', 'clip-set', 'vol-down', 'vol-mute', 'vol-up',
-    'windows-refresh', 'windows-list', 'proc-refresh', 'proc-list',
     'power-shutdown', 'power-restart', 'power-lock', 'power-sleep',
     'power-logoff', 'power-status'];
   for (const id of ids) {
     assert.ok(html32.indexOf('id="' + id + '"') >= 0, 'missing #' + id);
+  }
+});
+
+ok('v3.4 markup: manual control sections removed in v3.4 are absent', () => {
+  const html34 = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  const removed = ['printer-select', 'printers-list', 'run-input', 'run-btn',
+    'run-output', 'open-input', 'open-btn', 'open-status', 'shot-btn',
+    'shot-status', 'shot-img', 'clip-text', 'clip-get', 'clip-set',
+    'clip-status', 'vol-down', 'vol-mute', 'vol-up', 'windows-refresh',
+    'windows-list', 'proc-refresh', 'proc-list'];
+  for (const id of removed) {
+    assert.ok(html34.indexOf('id="' + id + '"') < 0, 'should be removed: #' + id);
   }
 });
 
@@ -636,3 +644,600 @@ ok('screen markup: live screen section and keys exist in index.html', () => {
     assert.ok(hs.indexOf('data-screen-key="' + k + '"') >= 0, 'missing key ' + k);
   }
 });
+
+/* ================= v3.4: multi-computer registry ================= */
+
+function clearPcKeysPwa() {
+  delete __lsStore['krouchi.pcs.v1'];
+  delete __lsStore['krouchi.pcs.active.v1'];
+  delete __lsStore['krouchi.pc.v1'];
+}
+
+ok('v3.4 registry: legacy-only storage migrates to one active entry', () => {
+  clearPcKeysPwa();
+  __lsStore['krouchi.pc.v1'] = JSON.stringify(
+    { host: '192.168.1.50', port: 9000, token: 'tok-legacy', mac: 'aa-bb-cc-dd-ee-ff' });
+  const reg = app.loadPcRegistry();
+  assert.strictEqual(reg.length, 1);
+  assert.strictEqual(reg[0].host, '192.168.1.50');
+  assert.strictEqual(reg[0].port, 9000);
+  assert.strictEqual(reg[0].token, 'tok-legacy');
+  assert.strictEqual(reg[0].mac, 'AA:BB:CC:DD:EE:FF');
+  assert.strictEqual(reg[0].name, '192.168.1.50');
+  assert.strictEqual(app.getActivePcId(), reg[0].id);
+  assert.deepStrictEqual(app.loadPcConfig(),
+    { host: '192.168.1.50', port: 9000, token: 'tok-legacy', mac: 'AA:BB:CC:DD:EE:FF' });
+});
+
+ok('v3.4 registry: add, switch and delete entries', () => {
+  clearPcKeysPwa();
+  const a = app.addPcEntry({ name: 'Alpha', host: '10.0.0.1', token: 'ta' });
+  const b = app.addPcEntry({ name: 'Beta', host: '10.0.0.2', token: 'tb' });
+  assert.strictEqual(app.loadPcRegistry().length, 2);
+  assert.strictEqual(app.getActivePcEntry().id, b.id);
+  assert.strictEqual(app.setActivePcEntry(a.id).name, 'Alpha');
+  assert.strictEqual(app.loadPcConfig().host, '10.0.0.1');
+  assert.strictEqual(app.removePcEntry(a.id).id, b.id);
+  assert.strictEqual(app.removePcEntry(b.id), null);
+  assert.deepStrictEqual(app.loadPcRegistry(), []);
+});
+
+ok('v3.4 registry: resolvePcEntry default, by name, unknown lists names', () => {
+  const reg = [
+    { id: 'p1', name: 'Home PC', host: 'h1', port: 8765, token: 't', mac: '' },
+    { id: 'p2', name: 'Office', host: 'h2', port: 8765, token: 't', mac: '' }];
+  assert.strictEqual(app.resolvePcEntry('', reg, 'p2').entry.name, 'Office');
+  assert.strictEqual(app.resolvePcEntry('home pc', reg, 'p2').entry.id, 'p1');
+  const miss = app.resolvePcEntry('Nope', reg, 'p1');
+  assert.strictEqual(miss.entry, null);
+  assert.ok(miss.error.indexOf('computer not found: Nope') === 0);
+  assert.ok(miss.error.indexOf('Office') >= 0);
+});
+
+ok('v3.4 registry markup: selector, name field and add/delete buttons', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  for (const id of ['pc-select', 'pc-add', 'pc-delete', 'pc-name']) {
+    assert.ok(h.indexOf('id="' + id + '"') >= 0, 'missing #' + id);
+  }
+});
+
+/* ================= v3.4: delegation tools + reports ================= */
+
+ok('v3.4 delegation: tool definitions (names, required params)', () => {
+  const byName = {};
+  for (const tool of app.PC_DELEGATION_TOOLS) byName[tool.function.name] = tool;
+  assert.deepStrictEqual(Object.keys(byName).sort(),
+    ['pc_ask', 'pc_bots', 'pc_report', 'pc_task']);
+  assert.deepStrictEqual(byName.pc_ask.function.parameters.required, ['bot', 'message']);
+  assert.deepStrictEqual(byName.pc_task.function.parameters.required, ['bot', 'task']);
+  assert.deepStrictEqual(byName.pc_bots.function.parameters.required, []);
+  assert.deepStrictEqual(byName.pc_report.function.parameters.required, []);
+});
+
+ok('v3.4 delegation: providerKind detects Gemini, defaults to openai', () => {
+  assert.strictEqual(app.providerKind({ kind: 'gemini', base: 'https://x' }), 'gemini');
+  assert.strictEqual(app.providerKind({ base: 'https://generativelanguage.googleapis.com/v1beta' }), 'gemini');
+  assert.strictEqual(app.providerKind({ base: 'https://openrouter.ai/api/v1' }), 'openai');
+});
+
+ok('v3.4 report: formatPcReport contains counts and names', () => {
+  const status = app.parseStatus({ app: 'Krouchi_DZ', version: '3.4.0',
+    hostname: 'DESKTOP-1', uptime_s: 3661, disk: null, ram_mb: null });
+  const tasks = app.parseTasks({ tasks: [
+    { id: 3, bot_name: 'Helper', title: 'Latest job', status: 'done' },
+    { id: 2, bot_name: 'Helper', title: 'Working', status: 'running' },
+    { id: 1, bot_name: 'Writer', title: 'Old', status: 'done' }] });
+  const text = app.formatPcReport(status, tasks, 'Home PC');
+  assert.ok(text.indexOf('Home PC') >= 0);
+  assert.ok(text.indexOf('3.4.0') >= 0);
+  assert.ok(text.indexOf('done: 2') >= 0);
+  assert.ok(text.indexOf('running: 1') >= 0);
+  assert.ok(text.indexOf('Helper [done] Latest job') >= 0);
+  assert.ok(text.indexOf('Writer') >= 0);
+});
+
+function fakePcTransportPwa(script) {
+  const state = { taskGets: 0 };
+  return function (method, url, headers, body) {
+    const path = url.replace(/^http:\/\/[^/]+/, '');
+    const reply = (obj) => Promise.resolve(
+      { status: 200, text: JSON.stringify(obj), error: '' });
+    if (path === '/api/bots') {
+      return reply({ bots: [{ id: 7, name: 'Helper', provider: 'p', model: 'm-x', mode: 'ask' }] });
+    }
+    if (path === '/api/tasks' && method === 'POST') {
+      return reply({ task: { id: 5, bot_id: 7, title: 'x', status: 'queued', created_at: 'c' } });
+    }
+    if (path === '/api/tasks/5') {
+      state.taskGets++;
+      const step = script[Math.min(state.taskGets - 1, script.length - 1)];
+      return reply({ task: Object.assign(
+        { id: 5, bot_id: 7, bot_name: 'Helper', title: 'x' }, step) });
+    }
+    return Promise.resolve({ status: 404, text: '{"error":"x"}', error: '' });
+  };
+}
+const REG1_PWA = [{ id: 'pc1', name: 'Home PC', host: '192.168.1.10',
+  port: 8765, token: 'tok', mac: '' }];
+
+(async () => {
+  await okAsync('v3.4 delegation: pc_task polls created -> running -> done', async () => {
+    const transport = fakePcTransportPwa([
+      { status: 'running' },
+      { status: 'done', result: 'final result text' }]);
+    const out = await app.executePcTool('pc_task',
+      { bot: 'Helper', task: 'do it' },
+      { registry: REG1_PWA, activeId: 'pc1', transport,
+        pollIntervalMs: 1, maxPollMs: 1000, sleep: () => Promise.resolve() });
+    assert.ok(out.indexOf('Task 5 done.') === 0, out);
+    assert.ok(out.indexOf('final result text') >= 0);
+  });
+  await okAsync('v3.4 delegation: pc_task still-running note at the cap', async () => {
+    const transport = fakePcTransportPwa([{ status: 'running' }]);
+    const out = await app.executePcTool('pc_task',
+      { bot: 'Helper', task: 'long job' },
+      { registry: REG1_PWA, activeId: 'pc1', transport,
+        pollIntervalMs: 10, maxPollMs: 30, sleep: () => Promise.resolve() });
+    assert.ok(out.indexOf('still running') >= 0, out);
+  });
+  await okAsync('v3.4 delegation: chat loop executes tool_calls then final text', async () => {
+    const bodies = [];
+    let calls = 0;
+    const transport = (method, url, headers, body) => {
+      calls++;
+      bodies.push(JSON.parse(body));
+      if (calls === 1) {
+        return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: null,
+            tool_calls: [{ id: 'c1', type: 'function',
+              function: { name: 'pc_bots', arguments: '{}' } }] } }] }) });
+      }
+      return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+        choices: [{ message: { content: 'final answer' } }] }) });
+    };
+    const reply = await app.sendChatWithTools('https://api.example.com/v1',
+      'sk', 'm', [{ role: 'user', content: 'list pc bots' }], {
+        tools: app.PC_DELEGATION_TOOLS, transport,
+        executeTool: () => Promise.resolve('Helper — m-x')
+      });
+    assert.strictEqual(reply, 'final answer');
+    assert.ok(Array.isArray(bodies[0].tools));
+    const toolMsg = bodies[1].messages[bodies[1].messages.length - 1];
+    assert.strictEqual(toolMsg.role, 'tool');
+    assert.strictEqual(toolMsg.tool_call_id, 'c1');
+  });
+})();
+
+/* ================= v3.4: keyboard layouts + screen markup ================= */
+
+ok('v3.4 keyboard: KB_LAYOUTS sanity (3 layouts, valid acts, F-row, arrows)', () => {
+  assert.deepStrictEqual(Object.keys(app.KB_LAYOUTS).sort(), ['ar', 'azerty', 'en']);
+  const kinds = ['text', 'key', 'mod', 'space'];
+  for (const name of Object.keys(app.KB_LAYOUTS)) {
+    const rows = app.KB_LAYOUTS[name].rows;
+    assert.strictEqual(rows[0].length, 12, name + ': F-row has 12');
+    rows[0].forEach((key, i) => {
+      assert.deepStrictEqual(key.act, { t: 'key', v: 'f' + (i + 1) });
+    });
+    const acts = [];
+    for (const row of rows) {
+      for (const key of row) {
+        assert.ok(typeof key.label === 'string' && key.label.length > 0);
+        assert.ok(key.act && kinds.indexOf(key.act.t) >= 0);
+        if (key.act.t !== 'space') {
+          assert.ok(typeof key.act.v === 'string' && key.act.v.length > 0);
+        }
+        acts.push(key.act);
+      }
+    }
+    for (const arrow of ['left', 'up', 'down', 'right']) {
+      assert.ok(acts.some((a) => a.t === 'key' && a.v === arrow), name + ': ' + arrow);
+    }
+    assert.ok(acts.some((a) => a.t === 'space'), name + ': space');
+    assert.deepStrictEqual(app.inputComboBody(['ctrl', 'c']),
+      { type: 'combo', keys: ['ctrl', 'c'] });
+  }
+});
+
+ok('v3.4 screen markup: fullscreen toggle, keyboard container, reports section', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  for (const id of ['screen-fullscreen', 'screen-kb', 'screen-kb-layout',
+      'report-status', 'report-counts', 'report-tasks', 'report-refresh']) {
+    assert.ok(h.indexOf('id="' + id + '"') >= 0, 'missing #' + id);
+  }
+  assert.ok(h.indexOf('.screen-full') >= 0, 'screen-full CSS class defined');
+});
+
+ok('v3.4 version: 3.4.0 in app.js + index.html, sw.js cache v5', () => {
+  const js = fs.readFileSync(path.join(DIR, 'app.js'), 'utf8');
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(DIR, 'sw.js'), 'utf8');
+  assert.ok(js.indexOf('3.4.0') >= 0, 'app.js');
+  assert.ok(h.indexOf('3.4.0') >= 0, 'index.html');
+  assert.ok(app.STRINGS.ar.about_p1.indexOf('3.4.0') >= 0);
+  assert.ok(app.STRINGS.en.about_p1.indexOf('3.4.0') >= 0);
+  assert.ok(sw.indexOf('krouchi-dz-shell-v5') >= 0, 'sw cache v5');
+});
+
+/* ================= bot avatars (v3.4) ================= */
+
+ok('avatars: AVATAR_GALLERY is exactly the six gallery names', () => {
+  assert.deepStrictEqual(app.AVATAR_GALLERY,
+    ['bot_1.png', 'bot_2.png', 'bot_3.png', 'bot_4.png', 'bot_5.png', 'bot_6.png']);
+});
+
+ok('avatars: normalizeBotAvatar keeps gallery names only', () => {
+  assert.strictEqual(app.normalizeBotAvatar('bot_6.png'), 'bot_6.png');
+  assert.strictEqual(app.normalizeBotAvatar(''), '');
+  assert.strictEqual(app.normalizeBotAvatar('evil.png'), '');
+  assert.strictEqual(app.normalizeBotAvatar('🤖'), '');
+  assert.strictEqual(app.normalizeBotAvatar(7), '');
+  assert.strictEqual(app.normalizeBotAvatar(null), '');
+});
+
+ok('avatars: legacy bot without avatar normalizes to empty string', () => {
+  assert.deepStrictEqual(
+    app.normalizeBot({ id: 'b1', name: 'Old', providerId: 'p', model: 'm' }),
+    { id: 'b1', name: 'Old', providerId: 'p', model: 'm', avatar: '' });
+  __lsStore['krouchi.bots.v1'] = JSON.stringify([
+    { id: 'b1', name: 'Old', providerId: 'p', model: 'm' },
+    { id: 'b2', name: 'New', providerId: 'p', model: 'm', avatar: 'bot_1.png' },
+    { id: 'b3', name: 'Bad', providerId: 'p', model: 'm', avatar: 'x.png' }]);
+  assert.deepStrictEqual(app.loadBots().map((b) => b.avatar),
+    ['', 'bot_1.png', '']);
+  delete __lsStore['krouchi.bots.v1'];
+});
+
+ok('avatars: botAvatarHtml gallery -> img with right src + onerror + monogram underlay', () => {
+  const htmlA = app.botAvatarHtml({ name: 'Helper', avatar: 'bot_3.png' });
+  assert.ok(htmlA.indexOf('<img class="bot-avatar') >= 0, htmlA);
+  assert.ok(htmlA.indexOf('src="avatars/bot_3.png"') >= 0, htmlA);
+  assert.ok(htmlA.indexOf('onerror=') >= 0, htmlA);
+  assert.ok(htmlA.indexOf('bot-avatar-mono') >= 0, htmlA);
+});
+
+ok('avatars: botAvatarHtml empty/unknown/emoji -> monogram with correct letter', () => {
+  const en = app.botAvatarHtml({ name: 'helper', avatar: '' });
+  assert.ok(en.indexOf('bot-avatar-mono') >= 0 && en.indexOf('>H<') >= 0, en);
+  assert.ok(en.indexOf('<img') < 0, en);
+  const ar = app.botAvatarHtml({ name: 'مساعد', avatar: '' });
+  assert.ok(ar.indexOf('>م<') >= 0, ar);
+  for (const bad of ['bot_99.png', '🤖']) {
+    const h = app.botAvatarHtml({ name: 'Bot', avatar: bad });
+    assert.ok(h.indexOf('<img') < 0 && h.indexOf('>B<') >= 0, bad);
+  }
+});
+
+ok('avatars: parsePcBots passes avatar through with empty default', () => {
+  assert.deepStrictEqual(
+    app.parsePcBots({ bots: [
+      { id: 1, name: 'A', avatar: 'bot_2.png' },
+      { id: 2, name: 'B', avatar: 'old.png' },
+      { id: 3, name: 'C' }] }).map((b) => b.avatar),
+    ['bot_2.png', '', '']);
+});
+
+ok('avatars: picker markup in index.html + avatarPickerHtml tiles and selection', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  assert.ok(h.indexOf('id="bot-avatar-picker"') >= 0, 'picker container');
+  assert.ok(h.indexOf('data-i18n="avatar_label"') >= 0, 'picker label');
+  assert.ok(h.indexOf('id="chat-bot-header"') >= 0, 'local chat header');
+  assert.ok(h.indexOf('id="pc-chat-bot-header"') >= 0, 'pc chat header');
+  app.setLang('ar');
+  const tiles = app.avatarPickerHtml('bot_2.png', 'مساعد');
+  for (const f of app.AVATAR_GALLERY) {
+    assert.ok(tiles.indexOf('data-avatar="' + f + '"') >= 0, f);
+    assert.ok(tiles.indexOf('src="avatars/' + f + '"') >= 0, f);
+  }
+  assert.ok(tiles.indexOf('data-avatar=""') >= 0, 'none tile');
+  assert.ok(tiles.indexOf(app.STRINGS.ar.avatar_none) >= 0, 'none label');
+  assert.ok(tiles.indexOf('avatar-tile selected" data-avatar="bot_2.png"') >= 0,
+    'selected tile');
+});
+
+ok('avatars: CSS animation keyframes + reduced-motion in index.html', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  assert.ok(/@keyframes avatar-bob/.test(h), 'avatar-bob keyframes');
+  assert.ok(/@keyframes avatar-bounce/.test(h), 'avatar-bounce keyframes');
+  assert.ok(h.indexOf('prefers-reduced-motion') >= 0, 'reduced-motion guard');
+  assert.ok(h.indexOf('avatar-bob 3.2s') >= 0, 'bob applied to header avatar');
+});
+
+ok('avatars: sw.js caches all six gallery files, CACHE_NAME still v5', () => {
+  const sw = fs.readFileSync(path.join(DIR, 'sw.js'), 'utf8');
+  for (const f of app.AVATAR_GALLERY) {
+    assert.ok(sw.indexOf("'./avatars/" + f + "'") >= 0, 'sw missing ' + f);
+  }
+  assert.ok(sw.indexOf("var CACHE_NAME = 'krouchi-dz-shell-v5';") >= 0,
+    'cache name unchanged');
+});
+
+ok('avatars: gallery files exist in the pwa folder', () => {
+  for (const f of app.AVATAR_GALLERY) {
+    assert.ok(fs.existsSync(path.join(DIR, 'avatars', f)), 'missing avatars/' + f);
+  }
+});
+
+/* ================= v3.4: shared API + role prompt + mandatory delegation loop ================= */
+
+let passedSharedPwa = 0;
+function okSh(name, fn) {
+  try { fn(); passedSharedPwa++; console.log('PASS ' + name); }
+  catch (e) { console.error('FAIL ' + name + ': ' + e.message); process.exitCode = 1; }
+}
+async function okShAsync(name, fn) {
+  try { await fn(); passedSharedPwa++; console.log('PASS ' + name); }
+  catch (e) { console.error('FAIL ' + name + ': ' + e.message); process.exitCode = 1; }
+}
+function clearSharedKeysPwa() {
+  delete __lsStore[app.LS_SHARED_API];
+  delete __lsStore[app.LS_PROVIDERS];
+  delete __lsStore[app.LS_BOTS];
+  delete __lsStore[app.LS_CHATS];
+}
+
+app.setLang('ar');
+
+okSh('shared API: storage round-trip under krouchi.sharedApi.v1', () => {
+  clearSharedKeysPwa();
+  assert.strictEqual(app.LS_SHARED_API, 'krouchi.sharedApi.v1');
+  assert.deepStrictEqual(app.saveSharedApi({ providerId: 'p1', model: 'm-x' }),
+    { providerId: 'p1', model: 'm-x' });
+  assert.deepStrictEqual(JSON.parse(__lsStore['krouchi.sharedApi.v1']),
+    { providerId: 'p1', model: 'm-x' });
+  assert.deepStrictEqual(app.loadSharedApi(), { providerId: 'p1', model: 'm-x' });
+  delete __lsStore[app.LS_SHARED_API];
+  assert.strictEqual(app.loadSharedApi(), null);
+});
+
+okSh('shared API migration: keyed provider preferred, model from most recent used bot', () => {
+  clearSharedKeysPwa();
+  app.saveProviders([
+    { id: 'p1', name: 'nokey', base: 'https://a.example/v1', key: '', models: ['a1'] },
+    { id: 'p2', name: 'keyed', base: 'https://b.example/v1', key: 'sk-2', models: ['b1', 'b2'] }]);
+  app.saveBots([
+    { id: 'bold', name: 'Old', providerId: 'p2', model: 'model-old', system: '' },
+    { id: 'bnew', name: 'New', providerId: 'p2', model: 'model-new', system: '' },
+    { id: 'bother', name: 'Other', providerId: 'p1', model: 'a1', system: '' }]);
+  app.saveChats({
+    bold: [{ role: 'user', content: 'q' }],
+    bnew: [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }] });
+  assert.deepStrictEqual(app.migrateSharedApi(),
+    { providerId: 'p2', model: 'model-new' });
+  assert.deepStrictEqual(app.loadSharedApi(),
+    { providerId: 'p2', model: 'model-new' });
+});
+
+okSh('shared API migration: no chat history -> first bound bot model', () => {
+  clearSharedKeysPwa();
+  app.saveProviders([
+    { id: 'p1', name: 'one', base: 'https://a.example/v1', key: 'sk', models: ['m1', 'm2'] }]);
+  app.saveBots([
+    { id: 'b1', name: 'First', providerId: 'p1', model: 'm-first', system: '' },
+    { id: 'b2', name: 'Second', providerId: 'p1', model: 'm-second', system: '' }]);
+  app.saveChats({});
+  assert.deepStrictEqual(app.migrateSharedApi(),
+    { providerId: 'p1', model: 'm-first' });
+});
+
+okSh('shared API migration: no keys -> first provider, unbound -> empty model', () => {
+  clearSharedKeysPwa();
+  app.saveProviders([
+    { id: 'p1', name: 'one', base: 'https://a.example/v1', key: '', models: ['m1'] },
+    { id: 'p2', name: 'two', base: 'https://b.example/v1', key: '', models: ['m2'] }]);
+  app.saveBots([]);
+  assert.deepStrictEqual(app.migrateSharedApi(), { providerId: 'p1', model: '' });
+});
+
+okSh('shared API migration: no providers -> stays unset, nothing written', () => {
+  clearSharedKeysPwa();
+  app.saveProviders([]);
+  assert.strictEqual(app.migrateSharedApi(), null);
+  assert.strictEqual(app.loadSharedApi(), null);
+  assert.ok(!(app.LS_SHARED_API in __lsStore));
+});
+
+okSh('shared API migration: an existing shared API is never overwritten', () => {
+  clearSharedKeysPwa();
+  app.saveProviders([
+    { id: 'p9', name: 'x', base: 'https://x.example/v1', key: 'sk', models: ['mx'] }]);
+  app.saveSharedApi({ providerId: 'keep', model: 'keep-model' });
+  assert.deepStrictEqual(app.migrateSharedApi(),
+    { providerId: 'keep', model: 'keep-model' });
+});
+
+okSh('role prompt: constants carry the tool names and the never-claim phrase', () => {
+  for (const tool of ['pc_bots', 'pc_ask', 'pc_task', 'pc_report']) {
+    assert.ok(app.ROLE_PROMPT_AR.indexOf(tool) >= 0, 'ar: ' + tool);
+    assert.ok(app.ROLE_PROMPT_EN.indexOf(tool) >= 0, 'en: ' + tool);
+  }
+  assert.ok(app.ROLE_PROMPT_AR.indexOf('لا تستطيع التواصل مع بوتات الحاسوب') >= 0);
+  assert.ok(app.ROLE_PROMPT_EN.indexOf(
+    'never say you cannot communicate with the computer bots') >= 0);
+  assert.strictEqual(app.getRolePrompt('ar'), app.ROLE_PROMPT_AR);
+  assert.strictEqual(app.getRolePrompt('en'), app.ROLE_PROMPT_EN);
+});
+
+okSh('role prompt: composed system = role first, then the bot prompt', () => {
+  assert.strictEqual(app.composeSystemContent({ system: 'My own rules' }),
+    app.ROLE_PROMPT_AR + '\n\n' + 'My own rules');
+  assert.strictEqual(app.composeSystemContent({ system: '' }), app.ROLE_PROMPT_AR);
+  assert.strictEqual(app.composeSystemContent({ system: 'Mine' }, 'en'),
+    app.ROLE_PROMPT_EN + '\n\n' + 'Mine');
+  const convo = app.buildLocalConvo({ system: 'S' }, [{ role: 'user', content: 'hi' }]);
+  assert.strictEqual(convo[0].role, 'system');
+  assert.strictEqual(convo[0].content, app.ROLE_PROMPT_AR + '\n\n' + 'S');
+  assert.deepStrictEqual(convo[1], { role: 'user', content: 'hi' });
+});
+
+okSh('shared API markup: bot form pickers gone, shared line + APIs section present', () => {
+  const h = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+  assert.ok(h.indexOf('id="bot-provider"') < 0, 'bot-provider removed');
+  assert.ok(h.indexOf('id="bot-model"') < 0, 'bot-model removed');
+  assert.ok(h.indexOf('id="bot-models"') < 0, 'bot-models removed');
+  assert.ok(h.indexOf('id="bot-shared-line"') >= 0, 'shared line');
+  assert.ok(h.indexOf('id="bot-shared-change"') >= 0, 'shared change button');
+  assert.ok(h.indexOf('id="shared-provider"') >= 0, 'shared provider select');
+  assert.ok(h.indexOf('id="shared-model"') >= 0, 'shared model select');
+  assert.ok(h.indexOf('id="shared-save"') >= 0, 'shared save button');
+});
+
+(async () => {
+  await okShAsync('shared resolution: a bot stale binding is ignored at send time', async () => {
+    clearSharedKeysPwa();
+    app.setLang('ar');
+    app.saveProviders([
+      { id: 'pStale', name: 'stale', base: 'https://stale.example/v1', key: 'sk-stale', models: ['stale-model'] },
+      { id: 'pShared', name: 'sharedprov', base: 'https://shared.example/v1', key: 'sk-shared', models: ['shared-model'] }]);
+    app.saveSharedApi({ providerId: 'pShared', model: 'shared-model' });
+    const bot = { id: 'b1', name: 'Deputy', providerId: 'pStale',
+      model: 'stale-model', system: 'Bot own prompt' };
+    const seen = {};
+    const transport = (method, url, headers, body) => {
+      Object.assign(seen, { method, url, headers, body: JSON.parse(body) });
+      return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+        choices: [{ message: { content: 'shared reply' } }] }) });
+    };
+    const reply = await app.sendLocalBotChat(bot,
+      [{ role: 'user', content: 'hello' }], { transport, registry: [] });
+    assert.strictEqual(reply, 'shared reply');
+    assert.strictEqual(seen.url, 'https://shared.example/v1/chat/completions');
+    assert.strictEqual(seen.headers.Authorization, 'Bearer sk-shared');
+    assert.strictEqual(seen.body.model, 'shared-model');
+    assert.strictEqual(seen.body.messages[0].role, 'system');
+    assert.strictEqual(seen.body.messages[0].content,
+      app.ROLE_PROMPT_AR + '\n\n' + 'Bot own prompt');
+    assert.deepStrictEqual(seen.body.messages[1], { role: 'user', content: 'hello' });
+  });
+
+  await okShAsync('shared resolution: no shared API -> err_shared_api, no provider call', async () => {
+    clearSharedKeysPwa();
+    app.saveProviders([
+      { id: 'p1', name: 'one', base: 'https://a.example/v1', key: 'sk', models: ['m'] }]);
+    let calls = 0;
+    const transport = () => { calls++; return Promise.resolve(
+      { status: 200, text: '{}', error: '' }); };
+    let err = null;
+    try {
+      await app.sendLocalBotChat({ id: 'b1', name: 'x', system: '' },
+        [{ role: 'user', content: 'hi' }], { transport, registry: [] });
+    } catch (e) { err = e; }
+    assert.ok(err, 'expected a rejection');
+    assert.strictEqual(err.kind, 'shared_api');
+    assert.strictEqual(err.message, app.t('err_shared_api'));
+    assert.strictEqual(calls, 0);
+  });
+
+  await okShAsync('shared resolution: deleted provider or empty model -> rejection, no call', async () => {
+    clearSharedKeysPwa();
+    app.saveProviders([
+      { id: 'p1', name: 'one', base: 'https://a.example/v1', key: 'sk', models: ['m'] }]);
+    let calls = 0;
+    const transport = () => { calls++; return Promise.resolve(
+      { status: 200, text: '{}', error: '' }); };
+    const bot = { id: 'b1', name: 'x', system: '' };
+    const hist = [{ role: 'user', content: 'hi' }];
+    app.saveSharedApi({ providerId: 'gone', model: 'm' });
+    await assert.rejects(
+      app.sendLocalBotChat(bot, hist, { transport, registry: [] }),
+      (e) => e.kind === 'shared_api');
+    app.saveSharedApi({ providerId: 'p1', model: '' });
+    await assert.rejects(
+      app.sendLocalBotChat(bot, hist, { transport, registry: [] }),
+      (e) => e.kind === 'shared_api');
+    assert.strictEqual(calls, 0);
+  });
+
+  await okShAsync('delegation loop: pc_task executed and result fed back', async () => {
+    clearSharedKeysPwa();
+    app.setLang('ar');
+    app.saveProviders([
+      { id: 'pShared', name: 'sharedprov', base: 'https://shared.example/v1',
+        key: 'sk-shared', models: ['shared-model'] }]);
+    app.saveSharedApi({ providerId: 'pShared', model: 'shared-model' });
+    const registry = [{ id: 'pc1', name: 'Home PC', host: '192.168.1.10',
+      port: 8765, token: 'tok', mac: '' }];
+    let creation = null;
+    const pcTransport = (method, url, headers, body) => {
+      const pth = url.replace(/^http:\/\/[^/]+/, '');
+      const reply = (obj) => Promise.resolve(
+        { status: 200, text: JSON.stringify(obj), error: '' });
+      if (pth === '/api/bots') {
+        return reply({ bots: [{ id: 7, name: 'Helper', provider: 'p', model: 'm-x', mode: 'ask' }] });
+      }
+      if (pth === '/api/tasks' && method === 'POST') {
+        creation = { method, url, body: JSON.parse(body) };
+        return reply({ task: { id: 5, bot_id: 7, title: 'x', status: 'queued', created_at: 'c' } });
+      }
+      if (pth === '/api/tasks/5') {
+        return reply({ task: { id: 5, bot_id: 7, bot_name: 'Helper', title: 'x',
+          status: 'done', result: 'task result from the computer' } });
+      }
+      return Promise.resolve({ status: 404, text: '{"error":"x"}', error: '' });
+    };
+    const bodies = [];
+    const urls = [];
+    let calls = 0;
+    const providerTransport = (method, url, headers, body) => {
+      calls++;
+      urls.push(url);
+      bodies.push(JSON.parse(body));
+      if (calls === 1) {
+        return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: null,
+            tool_calls: [{ id: 'tc1', type: 'function',
+              function: { name: 'pc_task',
+                arguments: '{"bot":"Helper","task":"Summarize the notes file"}' } }] } }] }) });
+      }
+      return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+        choices: [{ message: { content: 'The computer bot finished the task' } }] }) });
+    };
+    const bot = { id: 'b1', name: 'Deputy', providerId: 'pStale', model: 'stale', system: '' };
+    const reply = await app.sendLocalBotChat(bot,
+      [{ role: 'user', content: 'Give my computer a task' }],
+      { transport: providerTransport, pcTransport, registry, activeId: 'pc1' });
+    /* (a) the PC transport received the task creation for the right bot */
+    assert.ok(creation, 'a task was created on the computer');
+    assert.strictEqual(creation.url, 'http://192.168.1.10:8765/api/tasks');
+    assert.strictEqual(creation.body.bot_id, 7);
+    assert.ok(creation.body.prompt.indexOf('Summarize the notes file') >= 0);
+    assert.strictEqual(urls[0], 'https://shared.example/v1/chat/completions');
+    assert.strictEqual(bodies[0].model, 'shared-model');
+    assert.ok(Array.isArray(bodies[0].tools));
+    assert.strictEqual(bodies[0].messages[0].content, app.ROLE_PROMPT_AR);
+    /* (b) the second provider request carries the tool result */
+    const toolMsgs = bodies[1].messages.filter((m) => m.role === 'tool');
+    assert.strictEqual(toolMsgs.length, 1);
+    assert.strictEqual(toolMsgs[0].tool_call_id, 'tc1');
+    assert.ok(toolMsgs[0].content.indexOf('Task 5 done.') === 0, toolMsgs[0].content);
+    assert.ok(toolMsgs[0].content.indexOf('task result from the computer') >= 0);
+    /* (c) the final answer comes from the follow-up response */
+    assert.strictEqual(reply, 'The computer bot finished the task');
+  });
+
+  await okShAsync('delegation gating: gemini shared provider -> plain send, no tools', async () => {
+    clearSharedKeysPwa();
+    app.saveProviders([
+      { id: 'pGem', name: 'gemini', base: 'https://generativelanguage.googleapis.com/v1beta',
+        key: 'k', kind: 'gemini', models: ['gemini-x'] }]);
+    app.saveSharedApi({ providerId: 'pGem', model: 'gemini-x' });
+    const registry = [{ id: 'pc1', name: 'Home PC', host: '192.168.1.10',
+      port: 8765, token: 'tok', mac: '' }];
+    const bodies = [];
+    const transport = (method, url, headers, body) => {
+      bodies.push(JSON.parse(body));
+      return Promise.resolve({ status: 200, error: '', text: JSON.stringify({
+        choices: [{ message: { content: 'plain reply' } }] }) });
+    };
+    const reply = await app.sendLocalBotChat({ id: 'b1', name: 'x', system: '' },
+      [{ role: 'user', content: 'hi' }], { transport, registry, activeId: 'pc1' });
+    assert.strictEqual(reply, 'plain reply');
+    assert.strictEqual(bodies.length, 1);
+    assert.ok(!('tools' in bodies[0]), 'no tools for gemini');
+    assert.strictEqual(bodies[0].messages[0].content, app.ROLE_PROMPT_AR);
+  });
+
+  clearSharedKeysPwa();
+  app.setLang('ar');
+  console.log('\n' + passedSharedPwa + ' shared-API tests passed (pwa)');
+})();

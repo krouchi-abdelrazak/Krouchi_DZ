@@ -7,7 +7,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'krouchi-dz-shell-v4';
+var CACHE_NAME = 'krouchi-dz-shell-v5';
 var SHELL_ASSETS = [
   './',
   './index.html',
@@ -16,7 +16,13 @@ var SHELL_ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './maskable-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './avatars/bot_1.png',
+  './avatars/bot_2.png',
+  './avatars/bot_3.png',
+  './avatars/bot_4.png',
+  './avatars/bot_5.png',
+  './avatars/bot_6.png'
 ];
 
 self.addEventListener('install', function (event) {
