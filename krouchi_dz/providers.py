@@ -66,6 +66,79 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "read_document",
+            "description": (
+                "قراءة نصّ وثيقة من جهاز المستخدم مع استخراج النصّ "
+                "القابل للقراءة منها: ملفات Word ‏(.docx) وExcel "
+                "‏(.xlsx) تُستخرَج فقراتها وجداولها وصفوفها نصاً "
+                "حقيقياً، وPDF ‏(.pdf) يُقرأ بأفضل جهد من نصّه "
+                "المخزَّن (الممسوح ضوئياً لا نصّ فيه فيتعذّر)، "
+                "والملفات النصّية "
+                "(.txt و.md و.csv و.json و.xml و.html و.log) تُقرأ "
+                "بترميزها الصحيح (بما فيه ملفات ويندوز العربية). "
+                "استعمل هذه الأداة — لا read_file — كلما طلب المستخدم "
+                "قراءة وثيقة أو رسالة رسمية أو محضر، لتلخّصها له أو "
+                "تردّ عليها؛ أما read_file فهي لقراءة ملف نصّي خام "
+                "كما هو حرفياً."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "مسار الوثيقة"}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_clipboard",
+            "description": (
+                "قراءة نصّ الحافظة الحالي على جهاز المستخدم (ما نسخه "
+                "للتوّ). استعملها عندما يطلب المستخدم العمل على نصّ "
+                "نسخه، أو يسأل عمّا في الحافظة. تعيد النصّ كما هو، "
+                "أو تنبيهاً إن كانت الحافظة فارغة أو لا تحوي نصاً."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "see_screen",
+            "description": (
+                "رؤية شاشة حاسوب المستخدم كما هي الآن بعينيك: تلتقط "
+                "صورة الشاشة الحالية وتُريك إياها صورةً حقيقية في "
+                "رسالتك التالية، فتصف ما تراه وتتصرّف بناءً عليه. "
+                "انظر أولاً ثم افهم ثم تصرّف: استعملها كلما لم تكن "
+                "متأكداً مما هو مفتوح أو معروض قبل أن تتصرّف بيديك — "
+                "type_text للكتابة داخل البرامج، وpress_keys للمفاتيح، "
+                "وwindow_action لإدارة النوافذ. المعامل question "
+                "اختياري: سؤال محدّد تريد الإجابة عنه مما في الشاشة. "
+                "تتطلّب نموذجاً بصرياً يرى الصور؛ فإن كان نموذج "
+                "Krouchi AI الحالي نصّياً فقط أعادت الأداة تنبيهاً "
+                "بذلك بدل الصورة."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": (
+                            "سؤال اختياري عمّا تريد معرفته من الشاشة"
+                        ),
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write_file",
             "description": "كتابة نص في ملف على جهاز المستخدم (ينشئ المجلدات اللازمة)",
             "parameters": {
@@ -251,6 +324,87 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "use_skill",
+            "description": (
+                "اقرأ التعليمات الكاملة لمهارة محفوظة باسمها. فهرس "
+                "مهاراتك (الاسم والوصف) يظهر في بداية محادثتك؛ فقبل "
+                "أي مهمة مألوفة — كتابة محضر، الردّ على رسالة رسمية، "
+                "تنسيق جدول — اقرأ مهارة الموضوع بهذه الأداة واتّبع "
+                "تعليماتها حرفياً، فهي ما علّمه المدير أو ما تعلّمته "
+                "من قبل. الاسم يجب أن يطابق اسماً من الفهرس."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "اسم المهارة كما في الفهرس",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_skill",
+            "description": (
+                "احفظ مهارة جديدة (أو حدّث قائمة بنفس الاسم) في "
+                "ذاكرتك الدائمة: إجراء متكرّر باسمه ووصفه وتعليماته "
+                "الكاملة خطوة بخطوة. استعملها عندما يعلّمك المدير "
+                "إجراءً أو صيغة عمل («من الآن فصاعداً اكتب المحضر "
+                "هكذا…»)، أو عندما تنجز مهمة بطريقة تستحق أن تتكرّر "
+                "بنفس الجودة. المهارة المحفوظة تبقى بعد إغلاق "
+                "البرنامج وتظهر في فهرسك أنت وكل البوتات."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "اسم قصير مميّز للمهارة",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "وصف بسطر واحد: متى تُستعمل",
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "description": "التعليمات الكاملة خطوة بخطوة",
+                    },
+                },
+                "required": ["name", "instructions"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": (
+                "احفظ حقيقة دائمة عن عمل المدير في ذاكرتك (تفضيل، "
+                "اسم، موعد ثابت، قاعدة عمل…) لتتذكّرها في كل محادثة "
+                "قادمة — ذاكرتك تظهر في بداية محادثتك. استعملها "
+                "عندما يخبرك المدير بشيء يجب ألا تنساه، أو عندما "
+                "تستنتج من العمل قاعدة ثابتة عنده. لا تحفظ أسراراً "
+                "ولا كلمات مرور أبداً."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {
+                        "type": "string",
+                        "description": "الحقيقة الدائمة بجملة واحدة واضحة",
+                    }
+                },
+                "required": ["fact"],
+            },
+        },
+    },
 ]
 
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
@@ -276,6 +430,11 @@ def _urllib_transport(url: str, headers: dict, payload: dict, timeout: float = 1
 
 class OpenAICompatibleProvider:
     """عميل محادثة متوافق مع OpenAI (chat/completions)."""
+
+    # يقبل أجزاء الصور في الرسائل (image_url) — القبول الفعلي رهين
+    # بالنموذج المختار: النموذج النصّي يرفض الطلب بخطأ 400 فيتدهور
+    # المحرّك بأمان إلى نصّ إرشادي (انظر engine._is_vision_rejection).
+    supports_vision = True
 
     def __init__(self, config: ProviderConfig, api_key: str, transport=None):
         self.config = config
@@ -315,26 +474,59 @@ class GeminiProvider:
     """عميل Google Gemini (generateContent). المحادثة النصية في الخطوة 1؛
     طلبات الأدوات لا تُمرَّر له (تبقى عبر المزوّدات المتوافقة مع OpenAI)."""
 
+    # نماذج Gemini ترى الصور: أجزاء image_url في الرسائل تُترجَم
+    # إلى inline_data في _convert.
+    supports_vision = True
+
     def __init__(self, config: ProviderConfig, api_key: str, transport=None):
         self.config = config
         self.api_key = api_key
         self.transport = transport or _urllib_transport
+
+    @staticmethod
+    def _parts_from_content(content) -> list[dict]:
+        """أجزاء Gemini من محتوى رسالة: نصّ عادي كما هو، وقائمة
+        أجزاء (شكل OpenAI) تُترجَم: text ← text، وimage_url ذات
+        عنوان data: ← inline_data (نوع MIME + بيانات base64)."""
+        if isinstance(content, str):
+            return [{"text": content}] if content else []
+        parts: list[dict] = []
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    if part.get("text"):
+                        parts.append({"text": part["text"]})
+                elif ptype == "image_url":
+                    url = (part.get("image_url") or {}).get("url", "")
+                    if url.startswith("data:") and "," in url:
+                        header, data = url.split(",", 1)
+                        mime = header[5:].split(";")[0] or "image/jpeg"
+                        parts.append(
+                            {"inline_data": {"mime_type": mime, "data": data}}
+                        )
+        return parts
 
     def _convert(self, messages: list[dict]) -> tuple[str, list[dict]]:
         system_parts: list[str] = []
         contents: list[dict] = []
         for m in messages:
             role = m.get("role")
-            text = m.get("content") or ""
+            content = m.get("content")
             if role == "system":
+                text = content if isinstance(content, str) else ""
                 if text:
                     system_parts.append(text)
             elif role == "assistant":
-                if text:
-                    contents.append({"role": "model", "parts": [{"text": text}]})
+                parts = self._parts_from_content(content)
+                if parts:
+                    contents.append({"role": "model", "parts": parts})
             elif role in ("user", "tool"):
-                if text:
-                    contents.append({"role": "user", "parts": [{"text": text}]})
+                parts = self._parts_from_content(content)
+                if parts:
+                    contents.append({"role": "user", "parts": parts})
         return "\n".join(system_parts), contents
 
     def chat(self, messages: list[dict], model: str, tools: list | None = None) -> ChatResult:

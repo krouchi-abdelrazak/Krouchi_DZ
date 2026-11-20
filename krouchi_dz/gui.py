@@ -30,7 +30,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timezone
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from . import autostart, i18n
 from .avatars import (
@@ -42,7 +42,7 @@ from .avatars import (
     monogram_for_name,
 )
 from .broker import ApprovalRequest, PendingApprovals, request_summary
-from .engine import ChatEngine, default_data_dir
+from .engine import ChatEngine, default_data_dir, prepare_attachment
 from .i18n import t
 from .tasks import ACTIVE_STATUSES, FINAL_STATUSES, TaskStore
 from .server import (
@@ -1194,6 +1194,222 @@ class AuditWindow:
 
 
 # ======================================================================
+# نافذة المهارات والذاكرة (الإصدار 3.6.0)
+# ======================================================================
+class SkillsWindow:
+    """مهارات البوتات وذاكرتها: قائمة مهارات (إضافة/تعديل/حذف بنموذج
+    اسم/وصف/تعليمات) وقائمة ملاحظات الذاكرة (مشتركة ولكل بوت، مع
+    حذف ملاحظة) — كل القراءات والكتابات عبر EngineRunner وقاعدة
+    المحرّك نفسها، بنمط AuditWindow."""
+
+    def __init__(self, parent: tk.Misc, runner: EngineRunner):
+        self.runner = runner
+        self.skills: list[dict] = []
+        self.notes: list[dict] = []
+        self.bot_names: dict[int, str] = {}
+
+        top = tk.Toplevel(parent)
+        self.top = top
+        top.title(t("skills.title"))
+        top.transient(parent)
+        top.geometry("820x560")
+
+        anchor = _text_anchor()
+        tk.Label(
+            top, text=t("skills.heading"), anchor=anchor,
+            font=("TkDefaultFont", 11, "bold"),
+        ).pack(fill="x", padx=10, pady=(10, 4))
+        columns = ("name", "desc", "origin")
+        self.tree = ttk.Treeview(top, columns=columns, show="headings")
+        for col, title, width in (
+            ("name", t("skills.col_name"), 180),
+            ("desc", t("skills.col_desc"), 420),
+            ("origin", t("skills.col_origin"), 150),
+        ):
+            self.tree.heading(col, text=title)
+            self.tree.column(col, width=width, anchor=_text_anchor())
+        self.tree.pack(fill="both", expand=True, padx=10)
+        self.tree.bind("<<TreeviewSelect>>", self._on_skill_selected)
+
+        form = tk.Frame(top)
+        form.pack(fill="x", padx=10, pady=(8, 0))
+        tk.Label(form, text=t("skills.name"), anchor=anchor).grid(
+            row=0, column=0, sticky="w"
+        )
+        self.name_var = tk.StringVar()
+        tk.Entry(form, textvariable=self.name_var).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0)
+        )
+        tk.Label(form, text=t("skills.description"), anchor=anchor).grid(
+            row=1, column=0, sticky="w", pady=(4, 0)
+        )
+        self.desc_var = tk.StringVar()
+        tk.Entry(form, textvariable=self.desc_var).grid(
+            row=1, column=1, sticky="ew", padx=(6, 0), pady=(4, 0)
+        )
+        form.columnconfigure(1, weight=1)
+        tk.Label(top, text=t("skills.instructions"), anchor=anchor).pack(
+            fill="x", padx=10, pady=(8, 2)
+        )
+        self.instructions_text = tk.Text(top, height=6, wrap="word")
+        self.instructions_text.pack(fill="x", padx=10)
+        buttons = tk.Frame(top)
+        buttons.pack(fill="x", padx=10, pady=8)
+        tk.Button(buttons, text=t("skills.add"), command=self.save_form).pack(
+            side=_start_side(), padx=(0, 6)
+        )
+        tk.Button(buttons, text=t("skills.edit"), command=self.save_form).pack(
+            side=_start_side(), padx=(0, 6)
+        )
+        tk.Button(
+            buttons, text=t("skills.delete"), command=self.delete_selected
+        ).pack(side=_start_side(), padx=(0, 6))
+        tk.Button(buttons, text=t("common.refresh"), command=self.refresh).pack(
+            side=_end_side()
+        )
+        self.status_label = tk.Label(top, text="", anchor=anchor, fg="#37474f")
+        self.status_label.pack(fill="x", padx=10)
+
+        tk.Label(
+            top, text=t("skills.memory_heading"), anchor=anchor,
+            font=("TkDefaultFont", 11, "bold"),
+        ).pack(fill="x", padx=10, pady=(10, 4))
+        self.memory_list = tk.Listbox(top, exportselection=False, height=7)
+        self.memory_list.pack(fill="both", expand=True, padx=10)
+        tk.Button(
+            top, text=t("skills.memory_delete"),
+            command=self.delete_memory_selected,
+        ).pack(pady=(6, 10))
+        self.refresh()
+
+    # -- القراءة -------------------------------------------------------------
+    def refresh(self) -> None:
+        def job(engine):
+            return (
+                engine.db.list_skills(),
+                engine.db.list_memory(),
+                {b["id"]: b["name"] for b in engine.db.list_bots()},
+            )
+
+        def done(ok, value):
+            if not ok:
+                return
+            skills, notes, names = value
+            self.skills = skills
+            self.notes = notes
+            self.bot_names = names
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            for skill in skills:
+                origin_key = "skills.origin_" + str(skill["origin"])
+                origin = t(origin_key) if i18n.has(origin_key) else skill["origin"]
+                self.tree.insert(
+                    "", "end", iid=str(skill["id"]),
+                    values=(skill["name"], skill["description"], origin),
+                )
+            self.memory_list.delete(0, "end")
+            if not notes:
+                self.memory_list.insert("end", t("skills.memory_empty"))
+            for note in notes:
+                if note["bot_id"] is None:
+                    owner = t("skills.memory_shared")
+                else:
+                    owner = t(
+                        "skills.memory_bot",
+                        name=names.get(note["bot_id"], f"#{note['bot_id']}"),
+                    )
+                self.memory_list.insert(
+                    "end", f"[{owner}] {note['fact']}"
+                )
+
+        self.runner.submit(job, done)
+
+    def _selected_skill(self) -> dict | None:
+        selection = self.tree.selection()
+        if not selection:
+            return None
+        skill_id = int(selection[0])
+        return next((s for s in self.skills if s["id"] == skill_id), None)
+
+    def _on_skill_selected(self, _event=None) -> None:
+        skill = self._selected_skill()
+        if skill is None:
+            return
+        self.name_var.set(skill["name"])
+        self.desc_var.set(skill["description"])
+        self.instructions_text.delete("1.0", "end")
+        self.instructions_text.insert("1.0", skill["instructions"])
+
+    # -- الكتابة ---------------------------------------------------------------
+    def save_form(self) -> None:
+        """يحفظ النموذج كمهارة (إنشاء أو تحديث بنفس الاسم، مصدر taught)."""
+        name = self.name_var.get().strip()
+        description = self.desc_var.get().strip()
+        instructions = self.instructions_text.get("1.0", "end").strip()
+        if not name:
+            self.status_label.config(text=t("skills.err_name"))
+            return
+        if not instructions:
+            self.status_label.config(text=t("skills.err_instructions"))
+            return
+
+        def job(engine):
+            engine.db.save_skill(name, description, instructions, origin="taught")
+
+        def done(ok, value):
+            if not ok:
+                self.status_label.config(
+                    text=t("app.err_generic", error=value)
+                )
+                return
+            self.status_label.config(text=t("skills.saved", name=name))
+            self.refresh()
+
+        self.runner.submit(job, done)
+
+    def delete_selected(self) -> None:
+        skill = self._selected_skill()
+        if skill is None:
+            return
+        if not messagebox.askyesno(
+            t("skills.title"),
+            t("skills.confirm_delete", name=skill["name"]),
+            parent=self.top,
+        ):
+            return
+
+        def job(engine):
+            engine.db.delete_skill(skill["name"])
+
+        def done(ok, _value):
+            if ok:
+                self.name_var.set("")
+                self.desc_var.set("")
+                self.instructions_text.delete("1.0", "end")
+                self.refresh()
+
+        self.runner.submit(job, done)
+
+    def delete_memory_selected(self) -> None:
+        selection = self.memory_list.curselection()
+        if not selection or not self.notes:
+            return
+        index = selection[0]
+        if index >= len(self.notes):
+            return
+        note_id = self.notes[index]["id"]
+
+        def job(engine):
+            engine.db.delete_memory(note_id)
+
+        def done(ok, _value):
+            if ok:
+                self.refresh()
+
+        self.runner.submit(job, done)
+
+
+# ======================================================================
 # نافذة مهام البوتات
 # ======================================================================
 class TasksWindow:
@@ -1709,6 +1925,8 @@ class KrouchiApp:
         self.selected_bot_id: int | None = None
         self._history_token = 0
         self._working = False
+        # مرفق محادثة معلّق (زرّ +): قاموس prepare_attachment أو None.
+        self._pending_attachment: dict | None = None
         self._active_approval: ApprovalDialog | None = None
         self._active_item = None  # طلب السجلّ المعروض على البطاقة حالياً
         self._header_avatar_image = None  # مرجع صورة ترويسة البوت الحالي
@@ -1763,6 +1981,9 @@ class KrouchiApp:
             side_buttons, text=t("app.audit"), command=self.open_audit
         ).pack(fill="x", pady=2)
         tk.Button(
+            side_buttons, text=t("app.skills"), command=self.open_skills
+        ).pack(fill="x", pady=2)
+        tk.Button(
             side_buttons, text=t("app.phone_link"), command=self.open_phone_link
         ).pack(fill="x", pady=2)
         # منتقي اللغة: زرّ لكل لغة مكتوب باسمها الذاتي.
@@ -1804,6 +2025,18 @@ class KrouchiApp:
             status_frame, text="", anchor=anchor, fg="#37474f"
         )
         self.status_label.pack(side=_start_side(), fill="x", expand=True)
+        # شريط المرفق المعلّق (زرّ +): يظهر فوق الإدخال ما دام هناك
+        # مرفق جاهز، مع زرّ إزالته — ويختفي عند الإرسال أو الإزالة.
+        attach_frame = tk.Frame(main)
+        attach_frame.pack(fill="x", padx=10, pady=(4, 0))
+        self.attach_label = tk.Label(
+            attach_frame, text="", anchor=anchor, fg="#37474f"
+        )
+        self.attach_label.pack(side=_start_side(), fill="x", expand=True)
+        self.attach_remove_button = tk.Button(
+            attach_frame, text=t("app.attach_remove"),
+            command=self._clear_attachment,
+        )
         input_frame = tk.Frame(main)
         input_frame.pack(fill="x", padx=10, pady=8)
         self.send_button = tk.Button(
@@ -1811,6 +2044,10 @@ class KrouchiApp:
             font=("TkDefaultFont", 10, "bold"),
         )
         self.send_button.pack(side=_end_side())
+        self.attach_button = tk.Button(
+            input_frame, text=t("app.attach"), command=self.attach_file,
+        )
+        self.attach_button.pack(side=_end_side(), padx=(0, 6))
         self.entry_var = tk.StringVar()
         self.entry = tk.Entry(input_frame, textvariable=self.entry_var)
         self.entry.pack(
@@ -1818,6 +2055,7 @@ class KrouchiApp:
             padx=(8, 0) if rtl else (0, 8),
         )
         self.entry.bind("<Return>", lambda _e: self.send_current())
+        self._refresh_attach_chip()
 
     # -- تبديل اللغة --------------------------------------------------------------
     def _mark_current_lang_button(self) -> None:
@@ -2095,9 +2333,58 @@ class KrouchiApp:
             self.progress.pack_forget()
             self.status_label.config(text="")
 
+    # -- إرفاق ملف في المحادثة (زرّ +، الإصدار 3.6.0) -------------------------
+    def _refresh_attach_chip(self) -> None:
+        """يحدّث شريط المرفق المعلّق بحسب الحالة الحالية."""
+        try:
+            if self._pending_attachment is not None:
+                self.attach_label.config(
+                    text=t(
+                        "app.attached",
+                        name=self._pending_attachment.get("name", ""),
+                    )
+                )
+                if not self.attach_remove_button.winfo_ismapped():
+                    self.attach_remove_button.pack(side=_end_side())
+            else:
+                self.attach_label.config(text="")
+                self.attach_remove_button.pack_forget()
+        except tk.TclError:
+            pass
+
+    def _clear_attachment(self) -> None:
+        self._pending_attachment = None
+        self._refresh_attach_chip()
+
+    def attach_file(self) -> None:
+        """زرّ +: حوار اختيار ملف، ثم تجهيزه مرفقاً معلّقاً."""
+        path = filedialog.askopenfilename(parent=self.root)
+        if path:
+            self._accept_attachment(path)
+
+    def _accept_attachment(self, path: str) -> None:
+        """يجهّز ملفاً مختاراً عبر prepare_attachment (القارئ العام
+        للوثائق، وجزء صورة للصور) ويعلّقه فوق الإدخال حتى الإرسال."""
+        def job(_engine):
+            return prepare_attachment(path)
+
+        def done(ok, value):
+            if not ok:
+                self.status_label.config(
+                    text=t("app.attach_err", error=value)
+                )
+                return
+            self._pending_attachment = value
+            self._refresh_attach_chip()
+
+        self.runner.submit(job, done)
+
     def send_current(self) -> None:
         text = self.entry_var.get().strip()
-        if not text or self._working:
+        attachment = self._pending_attachment
+        if self._working:
+            return
+        if not text and attachment is None:
             return
         if self.selected_bot_id is None:
             self.status_label.config(text=t("app.need_bot"))
@@ -2105,12 +2392,19 @@ class KrouchiApp:
         bot_id = self.selected_bot_id
         bot = next((b for b in self.bots if b["id"] == bot_id), None)
         self.entry_var.set("")
+        self._pending_attachment = None
+        self._refresh_attach_chip()
         if bot is not None:
-            self._append_local(t("app.you"), text, "head_user", "body_user")
+            shown = text
+            if attachment is not None:
+                chip = f"📎 {attachment.get('name', '')}"
+                shown = (shown + "\n" + chip) if shown else chip
+            self._append_local(t("app.you"), shown, "head_user", "body_user")
         self._set_working(True)
+        attachments = [attachment] if attachment is not None else None
 
         def job(engine):
-            return engine.send_message(bot_id, text)
+            return engine.send_message(bot_id, text, attachments=attachments)
 
         def done(ok, value):
             self._set_working(False)
@@ -2150,6 +2444,9 @@ class KrouchiApp:
 
     def open_audit(self) -> None:
         AuditWindow(self.root, self.runner)
+
+    def open_skills(self) -> None:
+        SkillsWindow(self.root, self.runner)
 
     def open_phone_link(self) -> None:
         if self.server is None:

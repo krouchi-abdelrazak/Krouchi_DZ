@@ -72,7 +72,26 @@ CREATE TABLE IF NOT EXISTS tasks (
     started_at  TEXT,
     finished_at TEXT
 );
+CREATE TABLE IF NOT EXISTS skills (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL UNIQUE,
+    description  TEXT NOT NULL DEFAULT '',
+    instructions TEXT NOT NULL DEFAULT '',
+    origin       TEXT NOT NULL DEFAULT 'taught',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bot_memory (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id     INTEGER,
+    fact       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
+
+# مصادر المهارات: علّمها المدير (taught)، ثُبّتت من ملف خارجي
+# (installed)، أو حفظها بوت بنفسه عبر أداة save_skill (bot).
+SKILL_ORIGINS = ("taught", "installed", "bot")
 
 APPROVAL_MODES = ("ask", "full", "readonly")
 
@@ -324,3 +343,100 @@ class Database:
             "SELECT value FROM settings WHERE key = ?", (key,)
         ).fetchone()
         return row["value"] if row else default
+
+    # -- المهارات (الإصدار 3.6.0: تعلّم البوتات واكتسابها) -------------------
+    def save_skill(
+        self,
+        name: str,
+        description: str = "",
+        instructions: str = "",
+        origin: str = "taught",
+    ) -> int:
+        """يحفظ مهارة باسمها (إنشاء أو تحديث) ويعيد معرّفها.
+
+        الاسم فريد: الحفظ باسم قائم يحدّث الوصف والتعليمات ووقت
+        التحديث فقط — المصدر وتاريخ الإنشاء يبقيان كما كانا، فتعديل
+        المدير لمهارة ثبّتها بوت لا يمحو أصلها.
+        """
+        if origin not in SKILL_ORIGINS:
+            raise ValueError(f"مصدر مهارة غير معروف: {origin}")
+        now = _now()
+        self.conn.execute(
+            """
+            INSERT INTO skills (name, description, instructions,
+                                origin, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                description=excluded.description,
+                instructions=excluded.instructions,
+                updated_at=excluded.updated_at
+            """,
+            (name, description, instructions, origin, now, now),
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT id FROM skills WHERE name = ?", (name,)
+        ).fetchone()
+        return int(row["id"])
+
+    def get_skill(self, name: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM skills WHERE name = ?", (name,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_skills(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM skills ORDER BY name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_skill(self, name: str) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM skills WHERE name = ?", (name,)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    # -- ذاكرة البوتات (حقائق دائمة تتذكّرها البوتات) -------------------------
+    def add_memory(self, bot_id: int | None, fact: str) -> int:
+        """يحفظ ملاحظة ذاكرة: bot_id=None يعني مشتركة بين كل البوتات."""
+        cur = self.conn.execute(
+            "INSERT INTO bot_memory (bot_id, fact, created_at) VALUES (?, ?, ?)",
+            (bot_id, fact, _now()),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_memory(self, bot_id: int | None = None) -> list[dict]:
+        """ملاحظات ذاكرة: لبوت واحد إن حُدّد (دون المشتركة)، وإلا الكل."""
+        if bot_id is None:
+            rows = self.conn.execute(
+                "SELECT * FROM bot_memory ORDER BY id"
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM bot_memory WHERE bot_id = ? ORDER BY id",
+                (bot_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def memory_for_prompt(self, bot_id: int, limit: int = 20) -> list[dict]:
+        """ملاحظات تُحقن في موجّه النظام: المشتركة + ملاحظات هذا
+        البوت، الأحدث ‏limit‏ واحدة، بترتيب الأقدم أولاً للقراءة."""
+        rows = self.conn.execute(
+            """
+            SELECT * FROM bot_memory
+            WHERE bot_id IS NULL OR bot_id = ?
+            ORDER BY id DESC LIMIT ?
+            """,
+            (bot_id, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def delete_memory(self, note_id: int) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM bot_memory WHERE id = ?", (note_id,)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0

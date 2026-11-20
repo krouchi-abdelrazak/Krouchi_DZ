@@ -63,6 +63,17 @@
   مشاهدةً في "screen_viewers" ما دام آخر إطار قبل أقلّ من 3 ثوانٍ.
   يبقى /api/screen/stream كما هو دون مساس.
 
+الإصدار 3.6.0 — المهارات والذاكرة وتعليم الحاسوب من الهاتف:
+- GET  /api/skills → {"skills": [{name, description, origin}]}
+- GET  /api/skills/<name> → السجلّ الكامل للمهارة (مع التعليمات)
+- POST /api/skills {name, description, instructions} → تعليم
+  الحاسوب مهارة من الهاتف: يمرّ بوسيط الموافقات باسم «تحكّم
+  الهاتف» وبنوع save_skill (كأفعال التحكّم الكتابية)، وعند
+  الموافقة تُحفَظ بمصدر «taught». الرفض = 403 {"error": "denied"}.
+- POST /api/chat يقبل حقل "attachments" اختيارياً (مرفقات زرّ +:
+  [{kind: "text", name, text} | {kind: "image", name, data_uri}])
+  فيمرّره إلى محرّك الحاسوب بنفس شكل مرفقات سطح المكتب.
+
 دلالات الموافقة في /api/chat (قرار التصميم الموثّق):
 المحادثة تعمل على الحاسوب عبر محرّكه؛ فإذا طلب بوت بنمط ask إجراءً
 سُجّل الطلب في سجلّ الموافقات المعلّقة المشترك وبقيت المحادثة معلّقة
@@ -102,6 +113,9 @@ from .tasks import TaskManager, TaskStore, task_detail, task_summary
 DEFAULT_PORT = 8765
 TOKEN_MIN_CHARS = 12
 MAX_BODY_BYTES = 1_000_000  # حدّ حجم جسم الطلب — طلبات الربط صغيرة بطبيعتها
+# حدّ خاص بجسم /api/chat: المرفقات (صور base64) أكبر من طلبات الربط
+# العادية بطبيعتها، فحدّها أوسع — وبقية النقاط تبقى على الحدّ العام.
+CHAT_MAX_BODY_BYTES = 16 * 1024 * 1024
 
 # مفاتيح الإعدادات في جدول settings داخل قاعدة بيانات مجلد البيانات.
 SETTING_TOKEN = "companion_token"
@@ -685,16 +699,18 @@ class CompanionServer:
 
         return self.engine_call(job)
 
-    def chat(self, bot_id: int, text: str) -> dict | None:
+    def chat(self, bot_id: int, text: str, attachments=None) -> dict | None:
         """محادثة كاملة على الحاسوب؛ None إن لم يوجد البوت.
 
+        attachments (اختياري): مرفقات زرّ + مهيّأة (نصّية/صور) تمرّ
+        إلى send_message كما هي — بنفس شكل مرفقات سطح المكتب.
         انظر دلالات حقل "approval" في ترويسة الوحدة.
         """
 
         def job(engine):
             if engine.db.get_bot(bot_id) is None:
                 return None
-            return engine.send_message(bot_id, text)
+            return engine.send_message(bot_id, text, attachments=attachments)
 
         started = time.monotonic()
         reply = self.engine_call(job)
@@ -709,6 +725,45 @@ class CompanionServer:
                 else "approved"
             )
         return payload
+
+    # -- المهارات: تعليم الهاتف للحاسوب (الإصدار 3.6.0) -----------------------
+    def list_skills(self) -> list[dict]:
+        """فهرس مهارات الحاسوب: الاسم والوصف والمصدر فقط."""
+        return self.engine_call(
+            lambda e: [
+                {
+                    "name": skill["name"],
+                    "description": skill["description"],
+                    "origin": skill["origin"],
+                }
+                for skill in e.db.list_skills()
+            ]
+        )
+
+    def get_skill(self, name: str) -> dict | None:
+        """السجلّ الكامل لمهارة باسمها (مع التعليمات) أو None."""
+        return self.engine_call(lambda e: e.db.get_skill(name))
+
+    def teach_skill(self, name: str, description: str, instructions: str):
+        """يحفظ مهارة علّمها الهاتف بعد موافقة الوسيط.
+
+        يمرّ بالوسيط باسم «تحكّم الهاتف» وبنوع save_skill كأفعال
+        التحكّم الكتابية؛ فعند الرفض يعيد None، وعند الموافقة يحفظ
+        بمصدر «taught» ويعيد السجلّ المحفوظ.
+        """
+        params = {
+            "name": name,
+            "description": description,
+            "instructions": instructions,
+        }
+        if not self.ask_control("save_skill", params):
+            return None
+
+        def job(engine):
+            engine.db.save_skill(name, description, instructions, origin="taught")
+            return engine.db.get_skill(name)
+
+        return self.engine_call(job)
 
 
 # ======================================================================
@@ -753,14 +808,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _read_json_body(self) -> dict:
+    def _read_json_body(self, max_bytes: int = MAX_BODY_BYTES) -> dict:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
         if length <= 0:
             return {}
-        if length > MAX_BODY_BYTES:
+        if length > max_bytes:
             raise ValueError("جسم الطلب أكبر من الحدّ")
         raw = self.rfile.read(length)
         data = json.loads(raw.decode("utf-8"))
@@ -849,7 +904,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         if method == "POST" and path == "/api/chat":
             try:
-                body = self._read_json_body()
+                body = self._read_json_body(CHAT_MAX_BODY_BYTES)
             except ValueError as exc:
                 return self._send_json(400, {"error": f"جسم غير صالح: {exc}"})
             bot_id = body.get("bot_id")
@@ -866,13 +921,86 @@ class _Handler(BaseHTTPRequestHandler):
                     400,
                     {"error": "الحقول المطلوبة: bot_id (رقم) و text (نص)"},
                 )
+            # مرفقات زرّ + (الإصدار 3.6.0): قائمة اختيارية بشكل
+            # [{kind: "text", name, text} | {kind: "image", name,
+            # data_uri}] — شكل غير صالح = 400 واضح، لا تجاهل صامت.
+            attachments = body.get("attachments")
+            if attachments is not None:
+                valid = isinstance(attachments, list) and all(
+                    isinstance(item, dict)
+                    and (
+                        (
+                            item.get("kind") == "text"
+                            and isinstance(item.get("text"), str)
+                        )
+                        or (
+                            item.get("kind") == "image"
+                            and isinstance(item.get("data_uri"), str)
+                            and item["data_uri"].startswith("data:image/")
+                        )
+                    )
+                    for item in attachments
+                )
+                if not valid:
+                    return self._send_json(
+                        400,
+                        {
+                            "error": (
+                                "attachments يجب أن تكون قائمة مرفقات "
+                                "نصّية (text) أو صور (data_uri)"
+                            )
+                        },
+                    )
             try:
-                payload = srv.chat(bot_id, text)
+                payload = srv.chat(bot_id, text, attachments=attachments)
             except Exception as exc:  # فشل مزوّد/نموذج يُبلَّغ ولا يمرّ صامتاً
                 return self._send_json(502, {"error": f"فشلت المحادثة: {exc}"})
             if payload is None:
                 return self._send_json(404, {"error": "بوت غير موجود"})
             return self._send_json(200, payload)
+
+        # ===== الإصدار 3.6.0: المهارات (قراءة حرة، والتعليم بالوسيط) =====
+        if method == "GET" and path == "/api/skills":
+            return self._send_json(200, {"skills": srv.list_skills()})
+
+        if method == "GET" and path.startswith("/api/skills/"):
+            skill_name = urllib.parse.unquote(path[len("/api/skills/"):])
+            if not skill_name or "/" in skill_name:
+                return self._send_json(404, {"error": "مسار غير معروف"})
+            skill = srv.get_skill(skill_name)
+            if skill is None:
+                return self._send_json(404, {"error": "مهارة غير موجودة"})
+            return self._send_json(200, {"skill": skill})
+
+        if method == "POST" and path == "/api/skills":
+            body, error = self._body_or_400()
+            if error:
+                return None
+            name = body.get("name")
+            description = body.get("description", "")
+            instructions = body.get("instructions")
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or not isinstance(instructions, str)
+                or not instructions.strip()
+                or not isinstance(description, str)
+            ):
+                return self._send_json(
+                    400,
+                    {
+                        "error": (
+                            "الحقول المطلوبة: name و instructions "
+                            "(نصّان غير فارغين)، و description نصّ اختياري"
+                        )
+                    },
+                )
+            skill = srv.teach_skill(
+                name.strip(), description.strip(), instructions
+            )
+            if skill is None:
+                return self._send_json(403, {"error": "denied"})
+            return self._send_json(200, {"ok": True, "skill": skill})
 
         if method == "POST" and path.startswith("/api/approvals/"):
             item_id = path[len("/api/approvals/"):]

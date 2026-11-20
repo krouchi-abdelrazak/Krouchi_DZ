@@ -31,12 +31,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 ACTIONS = (
-    "read_file", "write_file", "run_command", "open_target", "power",
+    "read_file", "read_document", "read_clipboard", "see_screen",
+    "write_file", "run_command", "open_target", "power",
     "print_file", "upload_file", "set_clipboard",
     "window_control", "kill_process", "clear_conversation",
     "type_text", "press_keys",
+    "use_skill", "save_skill", "remember",
 )
-READONLY_ALLOWED = ("read_file",)
+READONLY_ALLOWED = (
+    "read_file", "read_document", "read_clipboard", "see_screen",
+    "use_skill",
+)
 
 # أسباب القرارات (تُحفظ في سجلّ التدقيق وتظهر للمستخدم).
 REASON_FULL = "وضع الوصول الكامل"
@@ -72,13 +77,21 @@ def request_summary(request: "ApprovalRequest") -> str:
     وخادم الهاتف في ملخّصات /api/approvals على حدّ سواء.
     """
     params = request.params or {}
-    if request.action in ("read_file", "write_file"):
+    if request.action in ("read_file", "read_document", "write_file"):
         text = str(params.get("path", "؟"))
         if request.action == "write_file":
             content = str(params.get("content", ""))
             preview = content if len(content) <= 300 else content[:300] + "…"
             text += f"\n\nالمحتوى ({len(content)} حرفاً):\n{preview}"
         return text
+    if request.action == "read_clipboard":
+        return "قراءة نصّ الحافظة الحالية على الجهاز"
+    if request.action == "see_screen":
+        question = str(params.get("question", "") or "").strip()
+        summary = "رؤية شاشة الحاسوب الحالية والتقاط صورتها"
+        if question:
+            summary += f" — السؤال: {question}"
+        return summary
     if request.action == "run_command":
         return str(params.get("command", "؟"))
     if request.action == "open_target":
@@ -115,6 +128,23 @@ def request_summary(request: "ApprovalRequest") -> str:
         return f"كتابة نص في النافذة المركّزة ({len(content)} حرفاً):\n{preview}"
     if request.action == "press_keys":
         return f"ضغط مفاتيح: {params.get('keys', '؟')}"
+    if request.action == "use_skill":
+        return f"قراءة تعليمات المهارة: {params.get('name', '؟')}"
+    if request.action == "save_skill":
+        text = f"حفظ مهارة: {params.get('name', '؟')}"
+        description = str(params.get("description", "") or "").strip()
+        if description:
+            text += f" — {description}"
+        instructions = str(params.get("instructions", ""))
+        preview = (
+            instructions
+            if len(instructions) <= 300
+            else instructions[:300] + "…"
+        )
+        text += f"\n\nالتعليمات ({len(instructions)} حرفاً):\n{preview}"
+        return text
+    if request.action == "remember":
+        return f"حفظ في الذاكرة: {params.get('fact', '؟')}"
     return json.dumps(params, ensure_ascii=False)
 
 

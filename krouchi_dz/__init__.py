@@ -43,7 +43,7 @@ from .providers import (
 from .secrets import SecretsStore
 from .tasks import TaskManager, TaskStore
 
-__version__ = "3.4.1"
+__version__ = "3.6.0"
 
 __all__ = [
     "ApprovalBroker",
