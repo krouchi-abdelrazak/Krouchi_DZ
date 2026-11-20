@@ -3,8 +3,10 @@
 يربط: قاعدة البيانات المحلية، ملف إعدادات المزوّدين، مخزن الأسرار،
 ووسيط الموافقات. إرسال رسالة لبوت يحفظ الذاكرة لكل بوت في SQLite،
 وإذا طلب النموذج أدوات (read_file / write_file / run_command /
-open_target / window_action) نُفّذت عبر الوسيط فقط، وأُعيدت نتائجها
-للنموذج ليكمل ردّه. وحدها list_windows قراءة محضة فتُنفَّذ بلا وسيط.
+open_target / window_action / type_text / press_keys) نُفّذت عبر الوسيط
+فقط، وأُعيدت نتائجها للنموذج ليكمل ردّه. وحدها list_windows قراءة محضة
+فتُنفَّذ بلا وسيط. أداتا الكتابة (type_text / press_keys) تقودان مصرف
+إدخال remote نفسه الذي يستعمله مسار إدخال الهاتف (/api/input).
 
 ونقطة الدخول الأولى لإدخال API هي add_api(base_url, api_key):
 أي عنوان + أي مفتاح، فيسجّل المزوّد ويكتشف نماذجه بنفسه (discovery.py).
@@ -19,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import control, i18n
+from . import control, i18n, remote
 from .broker import ApprovalBroker
 from .config import ProviderConfig, load_providers, save_providers
 from .db import Database
@@ -40,6 +42,7 @@ from .secrets import SecretsStore
 MAX_TOOL_ROUNDS = 5          # حدّ جولات الأدوات في الرسالة الواحدة
 MAX_FILE_CHARS = 200_000     # حدّ حجم القراءة المعادة للنموذج
 COMMAND_TIMEOUT = 30.0       # مهلة تنفيذ أمر واحد (ثوانٍ)
+TEXT_EVENT_MAX = 2000        # حدّ طول حدث «text» واحد في remote.validate_input_event
 
 # -- الواجهة المشتركة: API واحدة لكل البوتات، تُدخَل مرة واحدة ------------
 SETTING_SHARED_PROVIDER = "shared_provider"
@@ -55,14 +58,23 @@ ORIENTATION_AR = (
     "أنت بوت حاسوب داخل تطبيق Krouchi_DZ، تعمل على حاسوب المدير "
     f"(المستخدم) وتنفّذ أوامره بأدواتك: {_TOOL_NAMES_AR}. "
     "الأفعال الكبيرة تمرّ بموافقة المدير عبر وسيط الموافقات؛ نفّذ ما "
-    "يوافق عليه فقط، واذكر باختصار ما فعلته وما تعذّر عليك."
+    "يوافق عليه فقط، واذكر باختصار ما فعلته وما تعذّر عليك. "
+    "وللكتابة داخل أي برنامج (كـ Word): افتحه بـ open_target، ركّز "
+    "نافذته بـ list_windows ثم window_action (focus)، اكتب المحتوى "
+    "بـ type_text، وتنقّل بين الحقول بـ press_keys (tab/enter)، "
+    "واحفظ في النهاية بـ press_keys (ctrl+s)."
 )
 ORIENTATION_EN = (
     "You are a computer bot inside the Krouchi_DZ app, running on the "
     "director's (the user's) computer, carrying out his orders with "
     f"your tools: {_TOOL_NAMES_EN}. Major actions pass through the "
     "director's approval broker; only do what gets approved, and "
-    "briefly state what you did and what you could not do."
+    "briefly state what you did and what you could not do. "
+    "To write inside any program (e.g. Word): open it with "
+    "open_target, focus its window via list_windows then "
+    "window_action (focus), type the content with type_text, move "
+    "between fields with press_keys (tab/enter), and save at the "
+    "end with press_keys (ctrl+s)."
 )
 
 
@@ -102,6 +114,7 @@ class ChatEngine:
         provider_factory=None,
         get_transport=None,
         approval_registry=None,
+        input_sink=None,
     ):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +145,11 @@ class ChatEngine:
         self.provider_factory = provider_factory or (
             lambda cfg, key: build_provider(cfg, key, transport=self.transport)
         )
+        # مصرف إدخال remote (حقن لوحة المفاتيح) لأداتي type_text
+        # وpress_keys — قابل للحقن في الاختبارات، ويُنشأ كسولاً من
+        # remote.create_input_sink عند أول استعمال فعلي (انظر
+        # _get_input_sink)، فيبقى إنشاء المحرّك بلا أي أثر جانبي.
+        self.input_sink = input_sink
         # نقل GET لاكتشاف النماذج (قابل للحقن في الاختبارات — بلا شبكة).
         self.get_transport = get_transport
         self._provider_cache: dict[str, object] = {}
@@ -229,6 +247,18 @@ class ChatEngine:
             key = self.secrets.get(cfg.secret_ref)
             self._provider_cache[provider_name] = self.provider_factory(cfg, key)
         return self._provider_cache[provider_name]
+
+    def _get_input_sink(self):
+        """مصرف إدخال remote — يُنشأ كسولاً عند أول استعمال.
+
+        المصرف نفسه الذي يقوده خادم الهاتف لمسار /api/input
+        (server.get_input_sink): على ويندوز حقن SendInput حقيقي
+        (remote.WindowsInputSink)، وعلى غيره NullInputSink يرفع
+        خطأ عربياً واضحاً عند الاستعمال — فلا تنفيذ ثانٍ للحقن هنا.
+        """
+        if self.input_sink is None:
+            self.input_sink = remote.create_input_sink()
+        return self.input_sink
 
     # -- إدخال API: أي مفتاح + أي عنوان، والبرنامج يكتشف المزوّد بنفسه -------
     def _save_providers_file(self) -> None:
@@ -534,6 +564,10 @@ class ChatEngine:
                 output = self._do_open_target(params)
             elif action == "window_action":
                 output = self._do_window_action(params)
+            elif action == "type_text":
+                output = self._do_type_text(params)
+            elif action == "press_keys":
+                output = self._do_press_keys(params)
             elif action == "clear_conversation":
                 output = self._do_clear_conversation(bot_id)
             else:
@@ -621,6 +655,41 @@ class ChatEngine:
             "close": "أُغلقت النافذة",
         }
         return f"{labels[action]}: {window_id}"
+
+    def _do_type_text(self, params: dict) -> str:
+        # نفس مسار إدخال الهاتف (POST /api/input) حرفياً:
+        # remote.dispatch_input يتحقّق من الحدث ثم يقود مصرف الإدخال
+        # نفسه (حقن يونيكود SendInput على ويندوز) — لا تنفيذ ثانٍ
+        # للحقن هنا. النص الأطول من حدّ الحدث الواحد يُجزّأ على
+        # حدوده فيُكتب كاملاً مهما طال (رسالة أو محضر في Word).
+        text = params.get("text")
+        if not isinstance(text, str) or not text:
+            raise ValueError("النص فارغ أو غير صالح")
+        sink = self._get_input_sink()
+        for start in range(0, len(text), TEXT_EVENT_MAX):
+            remote.dispatch_input(
+                sink, None,
+                {"type": "text", "text": text[start:start + TEXT_EVENT_MAX]},
+            )
+        return f"كُتب النص في النافذة المركّزة ({len(text)} حرفاً)"
+
+    def _do_press_keys(self, params: dict) -> str:
+        # تحليل «ctrl+s» ونحوها إلى أحداث remote نفسها التي يقودها
+        # مسار إدخال الهاتف: مفتاح وحيد = حدث «key»، ومع مفاتيح
+        # تعديل = حدث «combo» بقائمة المفاتيح. التحقّق من الأسماء
+        # (وأخطاؤه العربية) من remote.validate_input_event نفسه.
+        raw = params.get("keys")
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("المفاتيح فارغة أو غير صالحة")
+        parts = [part.strip().lower() for part in raw.split("+")]
+        if any(not part for part in parts):
+            raise ValueError(f"تركيبة مفاتيح غير صالحة: {raw}")
+        sink = self._get_input_sink()
+        if len(parts) == 1:
+            remote.dispatch_input(sink, None, {"type": "key", "key": parts[0]})
+            return f"ضُغط المفتاح في النافذة المركّزة: {parts[0]}"
+        remote.dispatch_input(sink, None, {"type": "combo", "keys": parts})
+        return f"ضُغطت التركيبة في النافذة المركّزة: {'+'.join(parts)}"
 
     def _do_clear_conversation(self, bot_id: int) -> str:
         # مسح نهائي لسجلّ هذا البوت وحده (db.clear_bot_messages)؛

@@ -34,6 +34,7 @@ ACTIONS = (
     "read_file", "write_file", "run_command", "open_target", "power",
     "print_file", "upload_file", "set_clipboard",
     "window_control", "kill_process", "clear_conversation",
+    "type_text", "press_keys",
 )
 READONLY_ALLOWED = ("read_file",)
 
@@ -108,6 +109,12 @@ def request_summary(request: "ApprovalRequest") -> str:
         return f"إنهاء العملية {params.get('pid', '؟')}"
     if request.action == "clear_conversation":
         return "مسح كامل محادثة هذا البوت مع المستخدم نهائياً"
+    if request.action == "type_text":
+        content = str(params.get("text", ""))
+        preview = content if len(content) <= 300 else content[:300] + "…"
+        return f"كتابة نص في النافذة المركّزة ({len(content)} حرفاً):\n{preview}"
+    if request.action == "press_keys":
+        return f"ضغط مفاتيح: {params.get('keys', '؟')}"
     return json.dumps(params, ensure_ascii=False)
 
 

@@ -181,6 +181,66 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "type_text",
+            "description": (
+                "كتابة نص داخل البرنامج المفتوح حالياً على جهاز المستخدم: "
+                "يُضخّ النص بحقن يونيكود في النافذة المركّزة الآن، كما لو "
+                "كتبه المستخدم بلوحة مفاتيحه — فيعمل في أي برنامج "
+                "(Word أو المفكّرة أو نموذج في متصفّح أو غيرها). "
+                "سير العمل للكتابة في برنامج: افتح البرنامج أو الملف "
+                "أولاً بـ open_target، وركّز نافذته بـ window_action "
+                "(focus) بعد سرد النوافذ بـ list_windows إن لزم، ثم "
+                "اكتب المحتوى بهذه الأداة، واحفظ في النهاية بـ "
+                "press_keys بقيمة ctrl+s. النص يُكتب عند موضع المؤشر "
+                "الحالي، فتأكّد من التركيز وموضع المؤشر قبل الكتابة."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "النص المراد كتابته في النافذة المركّزة",
+                    }
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "press_keys",
+            "description": (
+                "ضغط مفتاح أو تركيبة مفاتيح على جهاز المستخدم داخل "
+                "النافذة المركّزة: enter للإدخال/الإرسال، tab للانتقال "
+                "بين حقول نموذج (و shift+tab للرجوع)، ctrl+s للحفظ، "
+                "ctrl+a لتحديد الكل، ctrl+c و ctrl+v للنسخ واللصق، "
+                "alt+f4 لإغلاق النافذة. القيمة سلسلة واحدة مثل «ctrl+s» "
+                "أو «enter» أو «tab»: مفاتيح التعديل (ctrl/alt/shift/win) "
+                "تُفصَل بعلامة + عن المفتاح الأخير، والمفتاح الأخير حرف "
+                "أو رقم أو اسم مفتاح (enter, esc, tab, space, "
+                "backspace, delete, insert, home, end, pageup, "
+                "pagedown, up, down, left, right, f1 حتى f12, "
+                "printscreen, win)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keys": {
+                        "type": "string",
+                        "description": (
+                            "المفتاح أو التركيبة، مثل ctrl+s أو enter "
+                            "أو shift+tab"
+                        ),
+                    }
+                },
+                "required": ["keys"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "clear_conversation",
             "description": (
                 "امسح كامل محادثة هذا البوت مع المستخدم نهائياً (كل الرسائل "

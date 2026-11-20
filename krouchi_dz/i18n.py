@@ -38,6 +38,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "action.list_windows": "سرد النوافذ",
         "action.window_control": "تحكّم بنافذة",
         "action.clear_conversation": "مسح المحادثة",
+        "action.type_text": "كتابة نص",
+        "action.press_keys": "ضغط مفاتيح",
         "decision.allowed": "سماح ✓",
         "decision.denied": "رفض ✗",
         # -- أخطاء المحرّك كما تعرضها الواجهة --------------------------------------
@@ -184,6 +186,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "action.list_windows": "List windows",
         "action.window_control": "Window control",
         "action.clear_conversation": "Clear conversation",
+        "action.type_text": "Type text",
+        "action.press_keys": "Press keys",
         "decision.allowed": "Allowed ✓",
         "decision.denied": "Denied ✗",
         # -- Engine errors as shown by the UI ------------------------------------------
