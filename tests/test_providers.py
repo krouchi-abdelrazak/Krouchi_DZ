@@ -110,6 +110,49 @@ class TestGemini(unittest.TestCase):
         self.assertEqual(contents[0]["role"], "user")
         self.assertEqual(contents[1]["role"], "model")
 
+    def test_image_parts_translated_to_inline_data(self):
+        # أجزاء الصورة (شكل OpenAI: image_url بعنوان data:) تُترجَم
+        # إلى inline_data بشكل Gemini، والنصّ يبقى جزءَ نصّ — حتى
+        # ترى نماذج Gemini لقطة see_screen كالنقاط المتوافقة تماماً.
+        cfg = ProviderConfig(
+            name="gemini", kind="gemini",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            secret_ref="gemini", default_model="gemini-2.0-flash",
+        )
+        transport = FakeTransport(
+            {"candidates": [{"content": {"parts": [{"text": "أرى الشاشة"}]}}]}
+        )
+        provider = GeminiProvider(cfg, "GKEY", transport=transport)
+        result = provider.chat(
+            [
+                {"role": "user", "content": "انظر"},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "ما هذا؟"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/jpeg;base64,QUJD"
+                            },
+                        },
+                    ],
+                },
+            ],
+            "gemini-2.0-flash",
+        )
+        self.assertEqual(result.text, "أرى الشاشة")
+        contents = transport.calls[0]["payload"]["contents"]
+        self.assertEqual(contents[0]["parts"], [{"text": "انظر"}])
+        self.assertEqual(
+            contents[1]["parts"],
+            [
+                {"text": "ما هذا؟"},
+                {"inline_data": {"mime_type": "image/jpeg", "data": "QUJD"}},
+            ],
+        )
+        self.assertTrue(provider.supports_vision)
+
 
 class TestMock(unittest.TestCase):
     def test_scripted_replies_and_recording(self):

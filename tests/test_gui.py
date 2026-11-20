@@ -30,6 +30,7 @@ from krouchi_dz.gui import (
     EngineRunner,
     KrouchiApp,
     PhoneLinkDialog,
+    SkillsWindow,
     TasksWindow,
     _ApprovalBridge,
     control_setting_enabled,
@@ -417,6 +418,102 @@ class TestAuditWindow(GuiFixture):
         values = window.tree.item(children[0], "values")
         self.assertIn("سماح", str(values))
         self.assertIn("كتابة ملف", str(values))
+
+
+# ======================================================================
+# نافذة المهارات والذاكرة (الإصدار 3.6.0)
+# ======================================================================
+class TestSkillsWindow(GuiFixture):
+    def test_skills_and_memory_rendered(self):
+        runner = self.make_runner()
+        bot_id = runner.call(lambda e: e.create_bot("متعلّم", "openrouter"))
+        runner.call(
+            lambda e: e.db.save_skill(
+                "محضر اجتماع", "صيغة المحاضر", "الترويسة أولاً",
+                origin="installed",
+            )
+        )
+        runner.call(lambda e: e.db.add_memory(None, "حقيقة مشتركة"))
+        runner.call(lambda e: e.db.add_memory(bot_id, "حقيقة البوت"))
+        window = SkillsWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: len(window.tree.get_children()) == 1)
+        values = window.tree.item(window.tree.get_children()[0], "values")
+        self.assertIn("محضر اجتماع", str(values))
+        self.assertIn("مثبّتة من ملف", str(values))
+        self.pump_until(lambda: window.memory_list.size() == 2)
+        self.assertIn("حقيقة مشتركة", window.memory_list.get(0))
+        self.assertIn("حقيقة البوت", window.memory_list.get(1))
+
+    def test_save_form_persists_skill(self):
+        runner = self.make_runner()
+        window = SkillsWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: len(window.skills) == 0)
+        window.name_var.set("مهارة جديدة")
+        window.desc_var.set("وصفها")
+        window.instructions_text.insert("1.0", "تعليماتها الكاملة")
+        window.save_form()
+        self.pump_until(
+            lambda: runner.call(lambda e: e.db.get_skill("مهارة جديدة"))
+            is not None
+        )
+        skill = runner.call(lambda e: e.db.get_skill("مهارة جديدة"))
+        self.assertEqual(skill["origin"], "taught")
+        self.assertEqual(skill["instructions"], "تعليماتها الكاملة")
+        self.pump_until(lambda: len(window.tree.get_children()) == 1)
+
+    def test_delete_memory_note(self):
+        runner = self.make_runner()
+        note_id = runner.call(lambda e: e.db.add_memory(None, "تُحذف"))
+        window = SkillsWindow(self.root, runner)
+        self.addCleanup(window.top.destroy)
+        self.pump_until(lambda: window.memory_list.size() == 1)
+        window.memory_list.selection_set(0)
+        window.delete_memory_selected()
+        self.pump_until(
+            lambda: runner.call(lambda e: e.db.list_memory()) == []
+        )
+        self.assertIsInstance(note_id, int)
+
+
+# ======================================================================
+# إرفاق ملف في محادثة سطح المكتب — زرّ + (الإصدار 3.6.0)
+# ======================================================================
+class TestDesktopAttach(GuiFixture):
+    def test_attach_text_file_reaches_provider(self):
+        mock = MockProvider([ChatResult(text="لخّصت المرفق")])
+        runner = self.make_runner(mock=mock)
+        bot_id = runner.call(lambda e: e.create_bot("محادث", "openrouter"))
+        app = KrouchiApp(self.root, runner, self.bridge)
+        self.pump_until(lambda: app.bots_list.size() == 1)
+        app.select_bot(bot_id)
+        path = Path(self.tmp.name) / "مرفق.txt"
+        path.write_text("محتوى الملف المرفق", encoding="utf-8")
+        app._accept_attachment(str(path))
+        self.pump_until(lambda: app._pending_attachment is not None)
+        self.assertIn("مرفق.txt", app.attach_label.cget("text"))
+        app.entry_var.set("لخّص")
+        app.send_current()
+        self.pump_until(
+            lambda: not app._working
+            and "لخّصت المرفق" in app.chat_text.get("1.0", "end")
+        )
+        sent_user = mock.calls[0]["messages"][-1]
+        self.assertIn("📎 ملف مرفق: مرفق.txt", sent_user["content"])
+        self.assertIn("محتوى الملف المرفق", sent_user["content"])
+        # المرفق استُهلك بالإرسال — لا شريط معلّقاً بعده
+        self.assertIsNone(app._pending_attachment)
+        self.assertEqual(app.attach_label.cget("text"), "")
+
+    def test_attach_bad_file_reports_error(self):
+        runner = self.make_runner()
+        app = KrouchiApp(self.root, runner, self.bridge)
+        app._accept_attachment(str(Path(self.tmp.name) / "غائب.txt"))
+        self.pump_until(
+            lambda: "غير موجود" in app.status_label.cget("text")
+        )
+        self.assertIsNone(app._pending_attachment)
 
 
 # ======================================================================

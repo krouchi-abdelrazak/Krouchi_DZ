@@ -121,5 +121,38 @@ class TestPersistence(I18nFixture):
             db.close()
 
 
+class TestKrouchiAiBranding(I18nFixture):
+    """علامة Krouchi AI (الإصدار 3.5.0): طبقة الذكاء المشتركة تحمل
+    اسم «Krouchi AI» في عنوان حوار الواجهة المشتركة وتسمياتها
+    بالعربي والإنجليزي — ومفاتيح الإعدادات الداخلية لا تتغيّر."""
+
+    def test_shared_api_title_is_krouchi_ai(self):
+        self.assertEqual(
+            i18n.STRINGS["ar"]["sharedapi.title"],
+            "Krouchi AI — الذكاء المشترك لكل البوتات",
+        )
+        self.assertEqual(
+            i18n.STRINGS["en"]["sharedapi.title"],
+            "Krouchi AI — the shared intelligence for all bots",
+        )
+
+    def test_shared_api_labels_carry_the_brand(self):
+        for lang in ("ar", "en"):
+            self.assertIn("Krouchi AI", i18n.STRINGS[lang]["sharedapi.hint"])
+            self.assertIn("Krouchi AI", i18n.STRINGS[lang]["app.shared_api"])
+            self.assertIn("Krouchi AI", i18n.STRINGS[lang]["bot.shared_change"])
+
+    def test_see_screen_action_label(self):
+        self.assertEqual(i18n.STRINGS["ar"]["action.see_screen"], "رؤية الشاشة")
+        self.assertEqual(i18n.STRINGS["en"]["action.see_screen"], "See screen")
+
+    def test_gui_dialog_uses_the_branded_title_key(self):
+        from krouchi_dz import gui
+
+        source = Path(gui.__file__).read_text(encoding="utf-8")
+        self.assertIn("class SharedApiDialog", source)
+        self.assertIn('t("sharedapi.title")', source)
+
+
 if __name__ == "__main__":
     unittest.main()

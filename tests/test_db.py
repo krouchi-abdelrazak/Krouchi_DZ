@@ -97,5 +97,81 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(self.db.get_audit(bot_id=99), [])
 
 
+class TestSkillsAndMemory(unittest.TestCase):
+    """جدولا skills وbot_memory (الإصدار 3.6.0): ذهاب وإياب كامل."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Database(Path(self.tmp.name) / "test.db")
+
+    def tearDown(self):
+        self.db.close()
+        self.tmp.cleanup()
+
+    def test_skill_round_trip_and_origins(self):
+        skill_id = self.db.save_skill(
+            "محضر اجتماع", "صيغة كتابة المحاضر", "1- الترويسة…",
+            origin="installed",
+        )
+        self.assertGreater(skill_id, 0)
+        skill = self.db.get_skill("محضر اجتماع")
+        self.assertEqual(skill["description"], "صيغة كتابة المحاضر")
+        self.assertEqual(skill["instructions"], "1- الترويسة…")
+        self.assertEqual(skill["origin"], "installed")
+        self.assertEqual(
+            [s["name"] for s in self.db.list_skills()], ["محضر اجتماع"]
+        )
+
+    def test_skill_update_keeps_origin_and_creation(self):
+        self.db.save_skill("مهارة", "وصف أول", "تعليمات أولى", origin="bot")
+        before = self.db.get_skill("مهارة")
+        self.db.save_skill("مهارة", "وصف جديد", "تعليمات جديدة", origin="taught")
+        after = self.db.get_skill("مهارة")
+        self.assertEqual(after["id"], before["id"])
+        self.assertEqual(after["description"], "وصف جديد")
+        self.assertEqual(after["instructions"], "تعليمات جديدة")
+        self.assertEqual(after["origin"], "bot")  # المصدر الأصلي يبقى
+        self.assertEqual(after["created_at"], before["created_at"])
+        self.assertEqual(len(self.db.list_skills()), 1)
+
+    def test_skill_bad_origin_rejected(self):
+        with self.assertRaises(ValueError):
+            self.db.save_skill("مهارة", "", "", origin="مجهول")
+
+    def test_skill_delete(self):
+        self.db.save_skill("مهارة", "", "تعليمات")
+        self.assertTrue(self.db.delete_skill("مهارة"))
+        self.assertIsNone(self.db.get_skill("مهارة"))
+        self.assertFalse(self.db.delete_skill("مهارة"))
+
+    def test_memory_shared_and_per_bot(self):
+        self.db.add_memory(None, "حقيقة مشتركة")
+        self.db.add_memory(5, "حقيقة البوت 5")
+        self.db.add_memory(7, "حقيقة البوت 7")
+        self.assertEqual(len(self.db.list_memory()), 3)
+        self.assertEqual(
+            [n["fact"] for n in self.db.list_memory(5)], ["حقيقة البوت 5"]
+        )
+        prompt_notes = self.db.memory_for_prompt(5)
+        self.assertEqual(
+            [n["fact"] for n in prompt_notes],
+            ["حقيقة مشتركة", "حقيقة البوت 5"],
+        )
+
+    def test_memory_for_prompt_latest_20_oldest_first(self):
+        for i in range(25):
+            self.db.add_memory(3, f"حقيقة {i}")
+        notes = self.db.memory_for_prompt(3)
+        self.assertEqual(len(notes), 20)
+        self.assertEqual(notes[0]["fact"], "حقيقة 5")
+        self.assertEqual(notes[-1]["fact"], "حقيقة 24")
+
+    def test_memory_delete(self):
+        note_id = self.db.add_memory(None, "تُحذف")
+        self.assertTrue(self.db.delete_memory(note_id))
+        self.assertEqual(self.db.list_memory(), [])
+        self.assertFalse(self.db.delete_memory(note_id))
+
+
 if __name__ == "__main__":
     unittest.main()

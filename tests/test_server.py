@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -538,6 +539,191 @@ class TestControlErrorArmor(ServerFixture):
         status, data = self.request("GET", "/api/processes")
         self.assertEqual(status, 500)
         self.assertEqual(data["error"], "انفجرت القائمة")
+
+
+class TestSkillsApi(ServerFixture):
+    """نقاط المهارات (الإصدار 3.6.0): قراءة الفهرس والسجلّ برمز
+    الربط (401 بلا رمز)، والتعليم POST يمرّ بوسيط الموافقات باسم
+    «تحكّم الهاتف» وبنوع save_skill — قبولاً فيُحفَظ بمصدر taught،
+    ورفضاً فلا يُحفَظ ويعود 403 denied."""
+
+    def seed_skill(self):
+        return self.gateway.call(
+            lambda e: e.db.save_skill(
+                "محضر اجتماع", "صيغة المحاضر", "الترويسة أولاً",
+                origin="installed",
+            )
+        )
+
+    def test_skills_require_token(self):
+        self.make_server()
+        status, _ = self.request("GET", "/api/skills", token=None)
+        self.assertEqual(status, 401)
+        status, _ = self.request("GET", "/api/skills", token="invalid")
+        self.assertEqual(status, 401)
+        status, _ = self.request(
+            "POST", "/api/skills",
+            {"name": "س", "instructions": "ص"}, token=None,
+        )
+        self.assertEqual(status, 401)
+
+    def test_skills_list_and_get(self):
+        self.make_server()
+        self.seed_skill()
+        status, data = self.request("GET", "/api/skills")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["skills"]), 1)
+        entry = data["skills"][0]
+        self.assertEqual(entry["name"], "محضر اجتماع")
+        self.assertEqual(entry["description"], "صيغة المحاضر")
+        self.assertEqual(entry["origin"], "installed")
+        self.assertNotIn("instructions", entry)  # الفهرس بلا تعليمات
+        status, data = self.request(
+            "GET", "/api/skills/" + urllib.parse.quote("محضر اجتماع")
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(data["skill"]["instructions"], "الترويسة أولاً")
+        status, _ = self.request(
+            "GET", "/api/skills/" + urllib.parse.quote("غائبة")
+        )
+        self.assertEqual(status, 404)
+
+    def test_teach_skill_bad_body_is_400(self):
+        self.make_server()
+        status, _ = self.request("POST", "/api/skills", {"name": "س"})
+        self.assertEqual(status, 400)
+        status, _ = self.request(
+            "POST", "/api/skills", {"name": "  ", "instructions": "ص"}
+        )
+        self.assertEqual(status, 400)
+
+    def teach_in_thread(self, body):
+        holder = {}
+
+        def run():
+            holder["result"] = self.request("POST", "/api/skills", body)
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        return thread, holder
+
+    def test_teach_skill_approved_saves_as_taught(self):
+        self.make_server()
+        thread, holder = self.teach_in_thread(
+            {
+                "name": "مهارة الهاتف",
+                "description": "علّمها الهاتف",
+                "instructions": "خطوات من الهاتف",
+            }
+        )
+        item = self.wait_pending_http()
+        self.assertEqual(item["tool"], "save_skill")
+        self.assertEqual(item["bot_name"], "تحكّم الهاتف")
+        self.assertIn("مهارة الهاتف", item["summary"])
+        status, _ = self.request(
+            "POST", f"/api/approvals/{item['id']}", {"decision": "approve"}
+        )
+        self.assertEqual(status, 200)
+        thread.join(10.0)
+        status, payload = holder["result"]
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["skill"]["origin"], "taught")
+        skill = self.gateway.call(lambda e: e.db.get_skill("مهارة الهاتف"))
+        self.assertEqual(skill["instructions"], "خطوات من الهاتف")
+
+    def test_teach_skill_denied_is_403_and_not_saved(self):
+        self.make_server()
+        thread, holder = self.teach_in_thread(
+            {"name": "مرفوضة", "instructions": "لا تُحفظ"}
+        )
+        item = self.wait_pending_http()
+        self.request(
+            "POST", f"/api/approvals/{item['id']}", {"decision": "deny"}
+        )
+        thread.join(10.0)
+        status, payload = holder["result"]
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["error"], "denied")
+        skill = self.gateway.call(lambda e: e.db.get_skill("مرفوضة"))
+        self.assertIsNone(skill)
+
+
+class TestChatAttachmentsApi(ServerFixture):
+    """POST /api/chat بمرفقات زرّ + (الإصدار 3.6.0): النصّية تصل
+    النموذج بعنوانها، والصور أجزاء حقيقية، والشكل الفاسد 400."""
+
+    def make_bot(self, mock):
+        self.make_server(mock)
+        return self.gateway.call(
+            lambda e: e.create_bot("محادث", "openrouter")
+        )
+
+    def test_chat_with_text_attachment(self):
+        mock = MockProvider([ChatResult(text="تم التلخيص")])
+        bot_id = self.make_bot(mock)
+        status, payload = self.request(
+            "POST", "/api/chat",
+            {
+                "bot_id": bot_id,
+                "text": "لخّص",
+                "attachments": [
+                    {
+                        "kind": "text", "name": "وثيقة.txt",
+                        "text": "محتوى الوثيقة المرفقة",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["reply"], "تم التلخيص")
+        sent_user = mock.calls[0]["messages"][-1]
+        self.assertIn("📎 ملف مرفق: وثيقة.txt", sent_user["content"])
+        self.assertIn("محتوى الوثيقة المرفقة", sent_user["content"])
+
+    def test_chat_with_image_attachment(self):
+        mock = MockProvider([ChatResult(text="أرى الصورة")])
+        bot_id = self.make_bot(mock)
+        status, _ = self.request(
+            "POST", "/api/chat",
+            {
+                "bot_id": bot_id,
+                "text": "ما هذه؟",
+                "attachments": [
+                    {
+                        "kind": "image", "name": "صورة.png",
+                        "data_uri": "data:image/png;base64,QUJD",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(status, 200)
+        sent_user = mock.calls[0]["messages"][-1]
+        self.assertIsInstance(sent_user["content"], list)
+        self.assertEqual(sent_user["content"][1]["type"], "image_url")
+
+    def test_chat_with_bad_attachment_is_400(self):
+        mock = MockProvider([ChatResult(text="ردّ")])
+        bot_id = self.make_bot(mock)
+        status, _ = self.request(
+            "POST", "/api/chat",
+            {
+                "bot_id": bot_id,
+                "text": "سلام",
+                "attachments": [{"kind": "video", "name": "v.mp4"}],
+            },
+        )
+        self.assertEqual(status, 400)
+        status, _ = self.request(
+            "POST", "/api/chat",
+            {
+                "bot_id": bot_id,
+                "text": "سلام",
+                "attachments": [
+                    {"kind": "image", "name": "x", "data_uri": "http://x/y"}
+                ],
+            },
+        )
+        self.assertEqual(status, 400)
 
 
 if __name__ == "__main__":
