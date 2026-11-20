@@ -63,7 +63,7 @@ var STRINGS = {
     btn_pc_back: 'عودة إلى بوتات الحاسوب',
     about_title: 'حول Krouchi_DZ',
     about_author: 'تأليف: كروشي عبد الرزاق',
-    about_p1: 'الإصدار 3.3.0 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
+    about_p1: 'الإصدار 3.3.1 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
     about_p2: 'وضعان: <b>مستقل على الهاتف</b> (إدخال API واكتشاف النماذج والمحادثة — لا أدوات ملفات ولا تشغيل أوامر على الهاتف)، و<b>مرافق للحاسوب</b> من تبويب «الحاسوب»: محادثة عبر بوتات الحاسوب، والموافقة على طلبات تنفيذه أو رفضها من هاتفك.',
     about_p3: 'مفاتيحك ومحادثاتك محفوظة في تخزين هذا التطبيق الخاص على هاتفك، ولا تغادر بياناتك الجهاز إلا إلى مزوّد النماذج الذي تختاره وبمفتاحك — أو إلى حاسوبك أنت عند استعمال الوضع المرافق.',
     label_language: 'اللغة',
@@ -297,7 +297,7 @@ var STRINGS = {
     btn_pc_back: 'Back to computer bots',
     about_title: 'About Krouchi_DZ',
     about_author: 'By Krouchi Abderrazak',
-    about_p1: 'Version 3.3.0 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
+    about_p1: 'Version 3.3.1 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
     about_p2: 'Two modes: <b>standalone on the phone</b> (API entry, model discovery and chat — no file tools and no command execution on the phone), and a <b>computer companion</b> from the "Computer" tab: chat through the computer\'s bots, and approve or deny its execution requests from your phone.',
     about_p3: 'Your keys and conversations are stored in this app\'s private storage on your phone, and your data leaves the device only to the model provider you choose, with your own key — or to your own computer when using the companion mode.',
     label_language: 'Language',
@@ -975,7 +975,20 @@ function pcRequest(cfg, method, path, bodyObj, timeoutMs, transport) {
         throw discError('auth', t('err_pc_token'));
       }
       if (res.status < 200 || res.status >= 300) {
-        throw discError('http', t('err_pc_http', { status: res.status }));
+        /* نصّ خطأ الخادم نفسه (حقل error في JSON) يُلحَق بالرسالة —
+         * بدونه لا يرى المستخدم إلا رقم HTTP ولا يعرف السبب */
+        var serverError = '';
+        if (res.text) {
+          try {
+            var parsedErr = JSON.parse(res.text);
+            if (parsedErr && typeof parsedErr.error === 'string') {
+              serverError = parsedErr.error;
+            }
+          } catch (e) { serverError = ''; }
+        }
+        throw discError('http',
+          t('err_pc_http', { status: res.status }) +
+          (serverError ? ' — ' + serverError : ''));
       }
       var data;
       try {
