@@ -61,6 +61,10 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        // شاشة الحاسوب ووسائطه تُحمَّل من حاسوب المستخدم نفسه عبر http
+        // على الشبكة المحلية/Tailscale — بلا هذا الوضع يحجب WebView
+        // ذلك المحتوى الصافي كمختلط من أصل الواجهة https الوهمي
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setDatabaseEnabled(true);
 
         webView.setWebViewClient(new WebViewClient() {
