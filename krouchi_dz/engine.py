@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -436,16 +437,37 @@ class ChatEngine:
     @staticmethod
     def _do_run_command(params: dict) -> str:
         command = params["command"]
-        argv = command if isinstance(command, list) else shlex.split(command)
-        if not argv:
-            raise ValueError("أمر فارغ")
-        proc = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT,
-            shell=False,
-        )
+        if sys.platform == "win32":
+            # ويندوز: التنفيذ عبر صدفة النظام (cmd.exe) بسلسلة الأمر كما
+            # هي — فتعمل الأوامر الداخلية (dir وstart...) والمسارات ذات
+            # الشرطات الخلفية والاقتباسات كما يتوقّع مستخدم ويندوز.
+            # (التقسيم بـshlex مع shell=False كان يكسر ذلك كله:
+            # [WinError 2] للأوامر الداخلية وتشويه للمسارات.)
+            cmdline = (
+                command
+                if isinstance(command, str)
+                else subprocess.list2cmdline(command)
+            )
+            if not cmdline.strip():
+                raise ValueError("أمر فارغ")
+            proc = subprocess.run(
+                cmdline,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT,
+                shell=True,
+            )
+        else:
+            argv = command if isinstance(command, list) else shlex.split(command)
+            if not argv:
+                raise ValueError("أمر فارغ")
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT,
+                shell=False,
+            )
         out = (proc.stdout or "") + (proc.stderr or "")
         return f"[رمز الخروج {proc.returncode}]\n{out}".strip()
 

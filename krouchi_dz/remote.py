@@ -270,9 +270,27 @@ def _guid_from_string(text):
 _JPEG_ENCODER_CLSID = "{557CF401-1A04-11D3-9A73-0000F81EF32E}"
 
 
+def _import_pillow():
+    """(Image, ImageGrab) من Pillow إن توفّرت، وإلا None."""
+    try:
+        from PIL import Image, ImageGrab
+    except Exception:
+        return None
+    return Image, ImageGrab
+
+
+def _grab_screen(image_grab):
+    """لقطة الشاشة كاملة عبر ImageGrab (كل الشاشات إن دعم الإصدار)."""
+    try:
+        return image_grab.grab(all_screens=True)
+    except TypeError:
+        return image_grab.grab()
+
+
 class WindowsScreenSource(ScreenSource):
-    """Real screen capture on Windows via GDI (ctypes), JPEG via Pillow
-    when importable, else via GDI+ (gdiplus.dll)."""
+    """Real screen capture on Windows. Preferred path: Pillow's
+    ImageGrab end-to-end (bundled with the Windows package). Fallback
+    when Pillow is absent: GDI capture (ctypes) + GDI+ JPEG encode."""
 
     SM_XVIRTUALSCREEN = 76
     SM_YVIRTUALSCREEN = 77
@@ -298,9 +316,26 @@ class WindowsScreenSource(ScreenSource):
             self._vh = self._user32.GetSystemMetrics(1)  # SM_CYSCREEN
         self._gdiplus = None
         self._gdiplus_token = None
+        self._size_cache = None  # يُحسَب مرة واحدة في size()
 
     # -- geometry ------------------------------------------------------
     def size(self):
+        if self._size_cache is None:
+            self._size_cache = self._compute_size()
+        return self._size_cache
+
+    def _compute_size(self):
+        # مع Pillow: مقاس اللقطة الفعلي من ImageGrab — هو ما ستعيده
+        # grab_jpeg فعلاً، فيطابق إحداثيات النقر حجم الصورة المعروضة.
+        pillow = _import_pillow()
+        if pillow is not None:
+            try:
+                _image, image_grab = pillow
+                width, height = _grab_screen(image_grab).size
+                if width > 0 and height > 0:
+                    return (int(width), int(height))
+            except Exception:
+                pass
         return (self._vw, self._vh)
 
     # -- raw capture ---------------------------------------------------
@@ -354,39 +389,7 @@ class WindowsScreenSource(ScreenSource):
         if src_dc:
             self._user32.ReleaseDC(0, src_dc)
 
-    def _hbitmap_to_bgra(self, hbitmap, width, height):
-        """GetDIBits -> top-down BGRA bytes."""
-        gdi32 = self._gdi32
-        mem_dc = gdi32.CreateCompatibleDC(0)
-        try:
-            header = _BitmapInfoHeader()
-            header.biSize = ctypes.sizeof(_BitmapInfoHeader)
-            header.biWidth = width
-            header.biHeight = -height  # negative => top-down
-            header.biPlanes = 1
-            header.biBitCount = 32
-            header.biCompression = self.BI_RGB
-            buf = ctypes.create_string_buffer(width * height * 4)
-            lines = gdi32.GetDIBits(
-                mem_dc, hbitmap, 0, height, buf, ctypes.byref(header),
-                self.DIB_RGB_COLORS)
-            if not lines:
-                raise RuntimeError("تعذر قراءة بيانات الشاشة")
-            return buf.raw
-        finally:
-            if mem_dc:
-                gdi32.DeleteDC(mem_dc)
-
-    # -- JPEG encoders ---------------------------------------------------
-    def _encode_jpeg_pillow(self, bgra, width, height, quality):
-        from PIL import Image
-        import io
-        # GDI 32bpp buffer is B,G,R,X per pixel -> Pillow raw mode "BGRX".
-        img = Image.frombytes("RGB", (width, height), bgra, "raw", "BGRX")
-        out = io.BytesIO()
-        img.save(out, format="JPEG", quality=int(quality))
-        return out.getvalue()
-
+    # -- JPEG عبر GDI+ (المسار الاحتياطي عند غياب Pillow) ----------------
     def _ensure_gdiplus(self):
         if self._gdiplus is not None:
             return self._gdiplus
@@ -488,6 +491,12 @@ class WindowsScreenSource(ScreenSource):
 
     # -- public ----------------------------------------------------------
     def grab_jpeg(self, max_width=1280, quality=60):
+        pillow = _import_pillow()
+        if pillow is not None:
+            # المسار المفضّل: Pillow/ImageGrab من الالتقاط إلى الترميز.
+            return self._grab_jpeg_pillow(pillow, max_width, quality)
+        # احتياطي بلا Pillow: التقاط GDI (مصغّراً بـStretchBlt عند
+        # الحاجة) ثم ترميز GDI+.
         width, height = self._vw, self._vh
         if max_width and width > int(max_width):
             scale = float(max_width) / float(width)
@@ -495,26 +504,29 @@ class WindowsScreenSource(ScreenSource):
             th = max(1, int(round(height * scale)))
         else:
             tw, th = width, height
-        try:
-            import PIL  # noqa: F401
-            have_pillow = True
-        except Exception:
-            have_pillow = False
-        if have_pillow:
-            # Capture at target size directly (StretchBlt shrink) so the
-            # BGRA buffer is already downscaled.
-            hbitmap, src_dc, mem_dc = self._capture_hbitmap(tw, th)
-            try:
-                bgra = self._hbitmap_to_bgra(hbitmap, tw, th)
-            finally:
-                self._release_capture(hbitmap, src_dc, mem_dc)
-            return self._encode_jpeg_pillow(bgra, tw, th, quality)
-        # GDI+ path: hand it the (possibly StretchBlt-shrunk) HBITMAP.
         hbitmap, src_dc, mem_dc = self._capture_hbitmap(tw, th)
         try:
             return self._encode_jpeg_gdiplus(hbitmap, quality)
         finally:
             self._release_capture(hbitmap, src_dc, mem_dc)
+
+    def _grab_jpeg_pillow(self, pillow, max_width, quality):
+        import io
+
+        image_mod, image_grab = pillow
+        img = _grab_screen(image_grab)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        width, height = img.size
+        if max_width and width > int(max_width):
+            scale = float(max_width) / float(width)
+            img = img.resize(
+                (int(max_width), max(1, int(round(height * scale)))),
+                image_mod.LANCZOS,
+            )
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=int(quality))
+        return out.getvalue()
 
 
 def create_screen_source():

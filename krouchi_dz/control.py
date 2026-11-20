@@ -23,6 +23,11 @@ from pathlib import Path
 
 IS_WINDOWS = os.name == "nt"
 
+# ويندوز فقط: منع وميض نافذة وحدة تحكّم زرقاء عند تشغيل العمليات
+# المساعدة (PowerShell خاصة). الثابت غير موجود على الأنظمة الأخرى
+# فيعيد getattr صفراً — وهو القيمة الافتراضية أصلاً فلا أثر هناك.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 FILE_MAX_BYTES = 5 * 1024 * 1024        # حدّ تنزيل ملف واحد (GET /api/file)
 UPLOAD_MAX_BYTES = 25 * 1024 * 1024     # حدّ رفع ملف واحد (POST /api/upload)
 RUN_TIMEOUT = 120.0                     # مهلة أمر /api/run (ثوانٍ)
@@ -180,7 +185,7 @@ def take_screenshot() -> tuple[bytes, str] | None:
     try:
         proc = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=20, creationflags=_NO_WINDOW,
         )
         if proc.returncode != 0 or not tmp.is_file():
             return None
@@ -217,7 +222,10 @@ def default_power_executor(action: str) -> None:
             "restart": ["shutdown", "/r", "/t", "60"],
             "logoff": ["shutdown", "/l"],
         }[action]
-        subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=_NO_WINDOW,
+        )
         return
     argv = {
         "shutdown": ["shutdown", "-h", "+1"],
@@ -226,7 +234,10 @@ def default_power_executor(action: str) -> None:
         "lock": ["loginctl", "lock-session"],
         "logoff": ["loginctl", "terminate-user", os.environ.get("USER", "")],
     }[action]
-    subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=_NO_WINDOW,
+    )
 
 
 # ======================================================================
@@ -389,11 +400,13 @@ def open_target(target: str) -> None:
         subprocess.Popen(
             ["open", target],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=_NO_WINDOW,
         )
     else:
         subprocess.Popen(
             ["xdg-open", target],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=_NO_WINDOW,
         )
 
 
@@ -401,7 +414,10 @@ def open_target(target: str) -> None:
 # الطابعات والطباعة
 # ======================================================================
 def _run_capture(argv: list[str], timeout: float = 15.0) -> tuple[int, str]:
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(
+        argv, capture_output=True, text=True, timeout=timeout,
+        creationflags=_NO_WINDOW,
+    )
     return proc.returncode, proc.stdout or ""
 
 
@@ -529,7 +545,8 @@ def set_clipboard(text: str, runner=None) -> None:
     if argv is None:
         raise RuntimeError("ضبط الحافظة غير متاح على هذه المنصّة")
     proc = subprocess.run(
-        argv, input=text, capture_output=True, text=True, timeout=15
+        argv, input=text, capture_output=True, text=True, timeout=15,
+        creationflags=_NO_WINDOW,
     )
     if proc.returncode != 0:
         raise RuntimeError("تعذّر ضبط الحافظة")
