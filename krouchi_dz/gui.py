@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import queue
 import threading
 import tkinter as tk
@@ -31,7 +32,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from . import i18n
+from . import autostart, i18n
+from .avatars import (
+    GALLERY_FILES,
+    avatar_image_path,
+    display_avatar_text,
+    find_avatars_dir,
+    is_gallery_avatar,
+    monogram_for_name,
+)
 from .broker import ApprovalRequest, PendingApprovals, request_summary
 from .engine import ChatEngine, default_data_dir
 from .i18n import t
@@ -150,6 +159,37 @@ def _set_window_icon(root: tk.Tk) -> None:
         root._ka_icon_image = image  # مرجع يمنع جمع الصورة من الذاكرة
     except Exception:
         pass
+
+
+def _load_avatar_thumbnail(path: Path, size: int = 48):
+    """صورة Tk مصغّرة (~size بكسل) لملف أفاتار، أو None عند أي فشل.
+
+    يُفضَّل Pillow (ImageTk) مع تصغير فعلي؛ فإن غاب يُستعمل
+    tk.PhotoImage مع subsample صحيح (أكبر عامل يقسّم الأبعاد إلى
+    ~size). أي فشل قراءة/تحويل يعيد None فيعرض المستدعي بلاطة
+    بديلة محايدة — الصورة تجميلية ولا يجوز أن تُسقط حواراً أبداً.
+    """
+    try:
+        from PIL import Image, ImageTk
+
+        with Image.open(path) as image:
+            image.thumbnail((size, size))
+            return ImageTk.PhotoImage(image.copy())
+    except ImportError:
+        pass  # لا Pillow — جرّب PhotoImage الأصلي تحت
+    except Exception:
+        return None
+    try:
+        image = tk.PhotoImage(file=str(path))
+        factor = max(
+            1,
+            max(image.width(), image.height()) // size,
+        )
+        if factor > 1:
+            image = image.subsample(factor, factor)
+        return image
+    except Exception:
+        return None
 
 
 
@@ -665,10 +705,186 @@ class AddApiDialog:
 
 
 # ======================================================================
+# حوار الواجهة المشتركة: API واحدة لكل البوتات، تُدخَل مرة واحدة
+# ======================================================================
+class SharedApiDialog:
+    """«الواجهة المشتركة»: مزوّد واحد + نموذج واحد يعمل بهما كل البوتات.
+
+    منتقي المزوّد من engine.providers، ومنتقي النموذج يُملأ عبر
+    engine.fetch_models (من الكاش إن كان حديثاً؛ وزرّ التحديث يجبر
+    الجلب بـ force=True) — بنمط خيوط AddApiDialog نفسه عبر
+    EngineRunner، فلا شبكة في خيط الواجهة. الاختيار الحالي للواجهة
+    المشتركة يُفتتَح محدَّداً، والحفظ عبر engine.set_shared_api.
+    """
+
+    def __init__(self, parent: tk.Misc, runner: EngineRunner, on_saved=None):
+        self.runner = runner
+        self.on_saved = on_saved
+        self.saved = False
+        self.providers_loaded = False
+        self.models_loaded = False
+        self._shared: tuple[str, str] | None = None
+
+        top = tk.Toplevel(parent)
+        self.top = top
+        top.title(t("sharedapi.title"))
+        top.transient(parent)
+        top.geometry("520x300")
+
+        tk.Label(
+            top, text=t("sharedapi.hint"), anchor=_text_anchor(),
+            wraplength=480, justify="right" if i18n.is_rtl() else "left",
+            fg="#37474f",
+        ).pack(fill="x", padx=12, pady=(10, 4))
+
+        form = tk.Frame(top)
+        form.pack(fill="x", padx=12)
+        rtl = i18n.is_rtl()
+        lc, ec = (1, 0) if rtl else (0, 1)  # عمود التسمية وعمود الإدخال
+        anchor = _text_anchor()
+        epadx = (0, 8) if rtl else (8, 0)
+        self.provider_var = tk.StringVar()
+        self.model_var = tk.StringVar()
+        tk.Label(form, text=t("sharedapi.provider"), anchor=anchor).grid(
+            row=0, column=lc, sticky=anchor, pady=4
+        )
+        self.provider_combo = ttk.Combobox(
+            form, textvariable=self.provider_var, state="readonly"
+        )
+        self.provider_combo.grid(row=0, column=ec, sticky="ew", pady=4, padx=epadx)
+        self.provider_combo.bind(
+            "<<ComboboxSelected>>", lambda _e: self._fetch_models()
+        )
+        tk.Label(form, text=t("sharedapi.model"), anchor=anchor).grid(
+            row=1, column=lc, sticky=anchor, pady=4
+        )
+        model_frame = tk.Frame(form)
+        model_frame.grid(row=1, column=ec, sticky="ew", pady=4, padx=epadx)
+        self.model_combo = ttk.Combobox(model_frame, textvariable=self.model_var)
+        self.model_combo.pack(side=_start_side(), fill="x", expand=True)
+        tk.Button(
+            model_frame, text=t("common.refresh"),
+            command=lambda: self._fetch_models(force=True),
+        ).pack(side=_end_side(), padx=(6, 0) if not rtl else (0, 6))
+        form.columnconfigure(ec, weight=1)
+
+        self.status_label = tk.Label(
+            top, text=t("bot.loading"), anchor=anchor, fg="#37474f",
+            wraplength=480, justify="right" if i18n.is_rtl() else "left",
+        )
+        self.status_label.pack(fill="x", padx=12, pady=(6, 0))
+        buttons = tk.Frame(top)
+        buttons.pack(fill="x", padx=12, pady=10)
+        tk.Button(
+            buttons, text=t("common.cancel"), width=10, command=top.destroy
+        ).pack(side="left")
+        tk.Button(
+            buttons, text=t("common.save"), width=10,
+            font=("TkDefaultFont", 10, "bold"), command=self.save,
+        ).pack(side="right")
+
+        self._load_providers()
+
+    # -- التحميل ---------------------------------------------------------------
+    def _load_providers(self) -> None:
+        def job(engine):
+            return list(engine.providers), engine.get_shared_api()
+
+        def done(ok, value):
+            if not ok:
+                self.status_label.config(text=t("bot.err_load", error=value))
+                return
+            names, shared = value
+            self._shared = shared
+            self.provider_combo.config(values=names)
+            if shared is not None and shared[0] in names:
+                self.provider_var.set(shared[0])
+            elif names:
+                self.provider_var.set(names[0])
+            self.providers_loaded = True
+            self.status_label.config(text="")
+            if self.provider_var.get():
+                self._fetch_models()
+
+        self.runner.submit(job, done)
+
+    def _fetch_models(self, force: bool = False) -> None:
+        provider = self.provider_var.get().strip()
+        if not provider:
+            return
+        self.models_loaded = False
+        self.status_label.config(text=t("sharedapi.fetching"))
+
+        def job(engine):
+            return engine.fetch_models(provider, force=force)
+
+        def done(ok, result):
+            if not ok:
+                self.status_label.config(
+                    text=t("common.err_unexpected", error=result)
+                )
+                return
+            self.models_loaded = True
+            if not result.ok:
+                # رسالة المحرّك العربية كما هي — بلا تجميل ولا إخفاء.
+                self.status_label.config(text=result.error)
+                return
+            self.model_combo.config(values=list(result.models))
+            shared = self._shared
+            if (
+                shared is not None
+                and shared[0] == provider
+                and shared[1]
+            ):
+                # الاختيار الحالي للواجهة المشتركة يبقى محدَّداً.
+                self.model_var.set(shared[1])
+            elif result.models and self.model_var.get() not in result.models:
+                self.model_var.set(result.models[0])
+            self.status_label.config(text="")
+
+        self.runner.submit(job, done)
+
+    # -- الحفظ ------------------------------------------------------------------
+    def save(self) -> None:
+        provider = self.provider_var.get().strip()
+        model = self.model_var.get().strip()
+        if not provider:
+            self.status_label.config(text=t("bot.need_provider"))
+            return
+
+        def job(engine):
+            engine.set_shared_api(provider, model)
+
+        def done(ok, value):
+            if not ok:
+                self.status_label.config(text=t("bot.err_save", error=value))
+                return
+            self.saved = True
+            if self.on_saved is not None:
+                self.on_saved()
+            self.top.destroy()
+
+        self.status_label.config(text=t("bot.saving"))
+        self.runner.submit(job, done)
+
+
+# ======================================================================
 # نافذة إنشاء / تعديل بوت
 # ======================================================================
 class BotDialog:
-    """نموذج بوت: اسم، مزوّد، نموذج، تعليمات نظام، نمط موافقة (افتراضيه اسأل)."""
+    """نموذج بوت: اسم، تعليمات نظام، نمط موافقة (افتراضيه اسأل).
+
+    لا منتقي مزوّد/نموذج هنا بعد (v3.4): كل البوتات تعمل بواجهة
+    API مشتركة واحدة تُدخَل مرة واحدة — يعرض النموذج سطراً للقراءة
+    فقط بالواجهة الحالية وزرّاً يفتح حوارها (SharedApiDialog).
+    عند إنشاء بوت جديد يحفظ المحرّك لقطة اسم مزوّد الواجهة
+    المشتركة في سجلّه؛ والتعديل لا يمسّ المزوّد/النموذج المخزَّنين.
+
+    وصورة أفاتار من المعرض: صفّ بلاطات مصغّرة (الصور الستّ في
+    assets/avatars) + بلاطة «بلا صورة» تعرض أحادي حرف الاسم؛ القيمة
+    المختارة اسم ملف معرض أو "" (أحادي). قيمة قديمة غير معرضية
+    (إيموجي) تُفتتح على «بلا صورة» لأنها ليست ملف معرض.
+    """
 
     def __init__(
         self,
@@ -681,22 +897,27 @@ class BotDialog:
         self.bot = bot
         self.on_saved = on_saved
         self.saved = False
-        self.providers_loaded = False
-        self._providers: list[tuple[str, list[str], str]] = []
+        self.shared_loaded = False
+        self.shared_api: tuple[str, str] | None = None
+        self._shared_dialog: SharedApiDialog | None = None
+        self._avatar_images: list = []  # مراجع تمنع جمع الصور من الذاكرة
+        self._avatar_buttons: dict[str, tk.Button] = {}
 
         top = tk.Toplevel(parent)
         self.top = top
         top.title(t("bot.edit_title") if bot else t("bot.new_title"))
         top.transient(parent)
-        top.geometry("520x430")
+        top.geometry("560x520")
 
         form = tk.Frame(top)
         form.pack(fill="both", expand=True, padx=12, pady=10)
         self.name_var = tk.StringVar(value=(bot or {}).get("name", ""))
-        self.provider_var = tk.StringVar(value=(bot or {}).get("provider_name", ""))
-        self.model_var = tk.StringVar(value=(bot or {}).get("model", ""))
         self.mode_var = tk.StringVar(
             value=mode_label((bot or {}).get("approval_mode", "ask"))
+        )
+        initial_avatar = (bot or {}).get("avatar", "")
+        self.avatar_var = tk.StringVar(
+            value=initial_avatar if is_gallery_avatar(initial_avatar) else ""
         )
 
         rtl = i18n.is_rtl()
@@ -709,19 +930,14 @@ class BotDialog:
         tk.Entry(form, textvariable=self.name_var).grid(
             row=0, column=ec, sticky="ew", pady=4, padx=epadx
         )
-        tk.Label(form, text=t("bot.provider"), anchor=anchor).grid(
-            row=1, column=lc, sticky=anchor, pady=4
+        # الواجهة المشتركة: سطر قراءة فقط بالوضع الحالي + زرّ تغييرها.
+        self.shared_label = tk.Label(form, text="", anchor=anchor)
+        self.shared_label.grid(
+            row=1, column=ec, sticky="ew", pady=4, padx=epadx
         )
-        self.provider_combo = ttk.Combobox(
-            form, textvariable=self.provider_var, state="readonly"
-        )
-        self.provider_combo.grid(row=1, column=ec, sticky="ew", pady=4, padx=epadx)
-        self.provider_combo.bind("<<ComboboxSelected>>", self._on_provider_changed)
-        tk.Label(form, text=t("bot.model"), anchor=anchor).grid(
-            row=2, column=lc, sticky=anchor, pady=4
-        )
-        self.model_combo = ttk.Combobox(form, textvariable=self.model_var)
-        self.model_combo.grid(row=2, column=ec, sticky="ew", pady=4, padx=epadx)
+        tk.Button(
+            form, text=t("bot.shared_change"), command=self.open_shared_api
+        ).grid(row=2, column=ec, sticky="ew", pady=4, padx=epadx)
         tk.Label(form, text=t("bot.mode"), anchor=anchor).grid(
             row=3, column=lc, sticky=anchor, pady=4
         )
@@ -731,11 +947,21 @@ class BotDialog:
             values=[mode_label(m) for m in APPROVAL_MODES_ORDER],
             state="readonly",
         ).grid(row=3, column=ec, sticky="ew", pady=4, padx=epadx)
+        tk.Label(
+            form,
+            text="صورة البوت:" if rtl else "Bot picture:",
+            anchor=anchor,
+        ).grid(row=4, column=lc, sticky="n" + anchor, pady=4)
+        self.avatar_frame = tk.Frame(form)
+        self.avatar_frame.grid(
+            row=4, column=ec, sticky="ew", pady=4, padx=epadx
+        )
+        self._build_avatar_picker()
         tk.Label(form, text=t("bot.prompt"), anchor=anchor).grid(
-            row=4, column=lc, sticky="n" + anchor, pady=4
+            row=5, column=lc, sticky="n" + anchor, pady=4
         )
         self.prompt_text = tk.Text(form, height=5, wrap="word")
-        self.prompt_text.grid(row=4, column=ec, sticky="ew", pady=4, padx=epadx)
+        self.prompt_text.grid(row=5, column=ec, sticky="ew", pady=4, padx=epadx)
         if bot and bot.get("system_prompt"):
             self.prompt_text.insert("1.0", bot["system_prompt"])
         form.columnconfigure(ec, weight=1)
@@ -754,83 +980,140 @@ class BotDialog:
             font=("TkDefaultFont", 10, "bold"), command=self.save,
         ).pack(side="right")
 
-        self._load_providers()
+        self._load_shared()
 
-    # -- المزوّدون والنماذج ---------------------------------------------------
-    def _load_providers(self) -> None:
+    # -- منتقي صورة البوت (المعرض) ------------------------------------------
+    def _build_avatar_picker(self) -> None:
+        """يبني صفّ البلاطات: صور المعرض الستّ + بلاطة «بلا صورة».
+
+        ملف/مجلد غائب أو تحميل فاشل ⇒ بلاطة بديلة محايدة تحمل رقم
+        الصورة، والاختيار يبقى ممكناً (القيمة تُحفَظ ولو غاب الملف
+        هنا — قد يوجد على جهاز آخر). النقر يختار ويُبرز المختار.
+        """
+        avatars_dir = find_avatars_dir()
+        for index, filename in enumerate(GALLERY_FILES, start=1):
+            image = None
+            if avatars_dir is not None:
+                candidate = avatars_dir / filename
+                if candidate.is_file():
+                    image = _load_avatar_thumbnail(candidate)
+            if image is not None:
+                self._avatar_images.append(image)
+                button = tk.Button(
+                    self.avatar_frame,
+                    image=image,
+                    command=lambda f=filename: self.select_avatar(f),
+                )
+            else:
+                button = tk.Button(
+                    self.avatar_frame,
+                    text=str(index),
+                    width=4,
+                    height=2,
+                    command=lambda f=filename: self.select_avatar(f),
+                )
+            button.pack(side="left", padx=2, pady=2)
+            self._avatar_buttons[filename] = button
+        # بلاطة «بلا صورة»: معاينة أحادي حرف الاسم الحالي.
+        self.monogram_button = tk.Button(
+            self.avatar_frame,
+            text=monogram_for_name(self.name_var.get()),
+            width=4,
+            height=2,
+            font=("TkDefaultFont", 14, "bold"),
+            command=lambda: self.select_avatar(""),
+        )
+        self.monogram_button.pack(side="left", padx=(8, 2), pady=2)
+        self._avatar_buttons[""] = self.monogram_button
+        # حرف المعاينة يتبع الاسم أثناء الكتابة.
+        try:
+            self.name_var.trace_add("write", self._refresh_monogram_tile)
+        except tk.TclError:
+            pass
+        self._refresh_avatar_highlight()
+
+    def _refresh_monogram_tile(self, *_args) -> None:
+        try:
+            self.monogram_button.config(
+                text=monogram_for_name(self.name_var.get())
+            )
+        except tk.TclError:
+            pass
+
+    def _refresh_avatar_highlight(self) -> None:
+        selected = self.avatar_var.get()
+        for value, button in self._avatar_buttons.items():
+            try:
+                button.config(
+                    relief="sunken" if value == selected else "raised",
+                    borderwidth=3 if value == selected else 1,
+                )
+            except tk.TclError:
+                pass
+
+    def select_avatar(self, value: str) -> None:
+        """يختار قيمة أفاتار (اسم ملف معرض أو "" لبلا صورة) ويُبرزها."""
+        self.avatar_var.set(value if is_gallery_avatar(value) else "")
+        self._refresh_avatar_highlight()
+
+    # -- الواجهة المشتركة ------------------------------------------------------
+    def _load_shared(self) -> None:
+        """يقرأ الواجهة المشتركة الحالية ويعرضها في سطر القراءة فقط."""
+
         def job(engine):
-            return [
-                (cfg.name, list(cfg.models), cfg.default_model)
-                for cfg in engine.providers.values()
-            ]
+            return engine.get_shared_api()
 
-        def done(ok, rows):
+        def done(ok, value):
             if not ok:
-                self.status_label.config(text=t("bot.err_load", error=rows))
+                self.status_label.config(text=t("bot.err_load", error=value))
                 return
-            self._providers = rows
-            self.provider_combo.config(values=[r[0] for r in rows])
-            if not self.provider_var.get() and rows:
-                self.provider_var.set(rows[0][0])
-            self._sync_models()
-            self.providers_loaded = True
+            self.shared_api = value
+            if value is None:
+                text = t("bot.shared_unset")
+            elif value[1]:
+                text = t(
+                    "bot.shared_current", provider=value[0], model=value[1]
+                )
+            else:
+                text = t("bot.shared_no_model", provider=value[0])
+            self.shared_label.config(text=text)
+            self.shared_loaded = True
             self.status_label.config(text="")
 
         self.runner.submit(job, done)
 
-    def _provider_entry(self, name: str):
-        for entry in self._providers:
-            if entry[0] == name:
-                return entry
-        return None
-
-    def _sync_models(self) -> None:
-        entry = self._provider_entry(self.provider_var.get())
-        models: list[str] = []
-        if entry is not None:
-            models = list(entry[1])
-            if entry[2] and entry[2] not in models:
-                models.insert(0, entry[2])
-        self.model_combo.config(values=models)
-        current = self.model_var.get()
-        if models and current not in models:
-            # في التعديل: أبقِ نموذج البوت إن كان ضمن قائمة مزوّده الأصلية فقط.
-            if not (self.bot and self.bot.get("provider_name") == self.provider_var.get()):
-                self.model_var.set(models[0])
-
-    def _on_provider_changed(self, _event=None) -> None:
-        self._sync_models()
+    def open_shared_api(self) -> None:
+        """يفتح حوار الواجهة المشتركة؛ حفظه يعيد تحميل سطر العرض هنا."""
+        self._shared_dialog = SharedApiDialog(
+            self.top, self.runner, on_saved=self._load_shared
+        )
 
     # -- الحفظ ------------------------------------------------------------------
     def save(self) -> None:
         name = self.name_var.get().strip()
-        provider = self.provider_var.get().strip()
-        model = self.model_var.get().strip()
         mode = mode_by_label(self.mode_var.get())
         prompt = self.prompt_text.get("1.0", "end").strip()
+        avatar = self.avatar_var.get()
         if not name:
             self.status_label.config(text=t("bot.need_name"))
-            return
-        if not provider:
-            self.status_label.config(text=t("bot.need_provider"))
             return
         bot_id = (self.bot or {}).get("id")
 
         def job(engine):
             if bot_id is None:
+                # بلا مزوّد: المحرّك يحفظ لقطة مزوّد الواجهة المشتركة.
                 return engine.create_bot(
                     name,
-                    provider,
-                    model=model,
                     system_prompt=prompt,
+                    avatar=avatar,
                     approval_mode=mode,
                 )
+            # التعديل لا يمسّ المزوّد/النموذج المخزَّنين إطلاقاً.
             engine.db.update_bot(
                 bot_id,
                 name=name,
-                provider_name=provider,
-                model=model,
                 system_prompt=prompt,
+                avatar=avatar,
                 approval_mode=mode,
             )
             return bot_id
@@ -1199,6 +1482,23 @@ class PhoneLinkDialog:
             command=self._save_autostart,
             anchor=anchor,
         ).pack(fill="x", padx=14, pady=(6, 2))
+        # «يبدأ مع ويندوز» (ويندوز فقط): اختصار مجلد بدء التشغيل الذي
+        # تديره وحدة autostart — الآلية نفسها التي ينشئها المثبّت.
+        # الحالة الابتدائية من وجود ملف الاختصار فعلاً على القرص
+        # لحظة فتح الحوار، لا من أي إعداد محفوظ.
+        self.start_with_windows_var = tk.BooleanVar(
+            value=autostart.is_startup_enabled()
+        )
+        self.start_with_windows_check = None
+        if os.name == "nt":
+            self.start_with_windows_check = tk.Checkbutton(
+                top,
+                text=t("start_with_windows"),
+                variable=self.start_with_windows_var,
+                command=self._toggle_start_with_windows,
+                anchor=anchor,
+            )
+            self.start_with_windows_check.pack(fill="x", padx=14, pady=(2, 2))
         self.control_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
             top,
@@ -1298,6 +1598,25 @@ class PhoneLinkDialog:
 
         self.runner.submit(job)
 
+    # -- يبدأ مع ويندوز (اختصار مجلد بدء التشغيل) ------------------------------
+    def _toggle_start_with_windows(self) -> None:
+        """ينشئ/يحذف اختصار بدء تشغيل ويندوز عبر وحدة autostart.
+
+        الهدف ووسائطه من autostart.default_target() (والأيقونة من
+        منطق الوحدة الافتراضي). عند أي فشل تعود خانة الاختيار إلى
+        الحالة الحقيقية على القرص ويُعرَض الخطأ في تسمية حالة
+        الحوار — آلية عرض أخطاء هذا الحوار نفسها.
+        """
+        new_value = bool(self.start_with_windows_var.get())
+        try:
+            target, args = autostart.default_target()
+            autostart.set_startup_enabled(new_value, target=target, args=args)
+        except Exception as exc:
+            self.start_with_windows_var.set(autostart.is_startup_enabled())
+            self.status_label.config(
+                text=t("common.err_unexpected", error=exc)
+            )
+
     # -- التحكم الكلي من الهاتف -------------------------------------------------
     def _load_control(self) -> None:
         def job(engine):
@@ -1392,6 +1711,7 @@ class KrouchiApp:
         self._working = False
         self._active_approval: ApprovalDialog | None = None
         self._active_item = None  # طلب السجلّ المعروض على البطاقة حالياً
+        self._header_avatar_image = None  # مرجع صورة ترويسة البوت الحالي
         self.sidebar_frame: tk.Frame | None = None
         self.main_frame: tk.Frame | None = None
 
@@ -1435,6 +1755,9 @@ class KrouchiApp:
         ).pack(fill="x", pady=2)
         tk.Button(
             side_buttons, text=t("app.add_api"), command=self.open_add_api
+        ).pack(fill="x", pady=2)
+        tk.Button(
+            side_buttons, text=t("app.shared_api"), command=self.open_shared_api
         ).pack(fill="x", pady=2)
         tk.Button(
             side_buttons, text=t("app.audit"), command=self.open_audit
@@ -1587,20 +1910,28 @@ class KrouchiApp:
     # -- قائمة البوتات ------------------------------------------------------------
     def refresh_bots(self, select_id: int | None = None) -> None:
         def job(engine):
-            return engine.db.list_bots()
+            return engine.db.list_bots(), engine.get_shared_api()
 
-        def done(ok, bots):
+        def done(ok, value):
             if not ok:
-                self.status_label.config(text=t("app.err_bots", error=bots))
+                self.status_label.config(text=t("app.err_bots", error=value))
                 return
+            bots, shared = value
             self.bots = bots
+            # شارة القائمة تقول الحقيقة تحت نموذج الواجهة المشتركة:
+            # نموذجها، فاسم مزوّدها، فلا شيء.
+            model = ""
+            if shared is not None:
+                model = shared[1] or shared[0]
             self.bots_list.delete(0, "end")
             for bot in bots:
-                model = bot["model"] or bot["provider_name"]
                 badge = mode_label(bot["approval_mode"])
+                # Listbox نصّي لا يستضيف صوراً: التمثيل هنا أحادي
+                # حرف الاسم دائماً (display_avatar_text) — القيمة
+                # الخام المخزَّنة (إيموجي قديم/اسم ملف) لا تظهر.
                 self.bots_list.insert(
                     "end",
-                    f"{bot['avatar']} {bot['name']} · {model} · [{badge}]",
+                    f"{display_avatar_text(bot)} {bot['name']} · {model} · [{badge}]",
                 )
             target = select_id if select_id is not None else self.selected_bot_id
             for index, bot in enumerate(bots):
@@ -1642,14 +1973,42 @@ class KrouchiApp:
             self.header_label.config(
                 text=t(
                     "app.header_bot",
-                    avatar=bot["avatar"],
+                    avatar=display_avatar_text(bot),
                     name=bot["name"],
                     provider=bot["provider_name"],
                     model=bot["model"] or t("app.default_model"),
                     mode=mode_label(bot["approval_mode"]),
                 )
             )
+            self._update_header_avatar_image(bot)
         self._load_history(bot_id)
+
+    def _update_header_avatar_image(self, bot: dict) -> None:
+        """صورة المعرض بجانب نصّ الترويسة إن وُجدت، وإلا بلا صورة.
+
+        الترويسة Label فيستطيع استضافة صورة رخيصاً (على خلاف قائمة
+        Listbox): قيمة معرضية + ملف موجود ⇒ صورة مصغّرة مرافقة
+        للنصّ (compound)؛ غير ذلك — قيمة قديمة/فارغة أو ملف غائب —
+        يُمسح أي صورة سابقة ويبقى نصّ الأحادي وحده، بلا انهيار.
+        """
+        self._header_avatar_image = None
+        try:
+            path = avatar_image_path(bot.get("avatar"))
+            image = (
+                _load_avatar_thumbnail(path, size=32)
+                if path is not None
+                else None
+            )
+            if image is not None:
+                self._header_avatar_image = image
+                self.header_label.config(
+                    image=image,
+                    compound="right" if i18n.is_rtl() else "left",
+                )
+            else:
+                self.header_label.config(image="", compound="none")
+        except tk.TclError:
+            pass
 
     # -- عرض المحادثة ---------------------------------------------------------------
     def _load_history(self, bot_id: int) -> None:
@@ -1684,8 +2043,10 @@ class KrouchiApp:
                     self._chat_insert(content, "body_user")
             elif role == "assistant":
                 if content:
+                    # رأس الرسالة داخل Text: أحادي الحرف نصّاً فقط
+                    # (تضمين صورة في متن المحادثة ليس رخيصاً هنا).
                     self._chat_insert(
-                        f"{bot['avatar']} {bot['name']}", "head_bot"
+                        f"{display_avatar_text(bot)} {bot['name']}", "head_bot"
                     )
                     self._chat_insert(content, "body_bot")
                 if row.get("tool_calls_json"):
@@ -1779,6 +2140,13 @@ class KrouchiApp:
 
     def open_add_api(self) -> None:
         AddApiDialog(self.root, self.runner)
+
+    def open_shared_api(self) -> None:
+        SharedApiDialog(
+            self.root,
+            self.runner,
+            on_saved=lambda: self.refresh_bots(select_id=self.selected_bot_id),
+        )
 
     def open_audit(self) -> None:
         AuditWindow(self.root, self.runner)

@@ -131,7 +131,7 @@ class Database:
         provider_name: str,
         model: str = "",
         system_prompt: str = "",
-        avatar: str = "🤖",
+        avatar: str = "",
         approval_mode: str = "ask",
     ) -> int:
         if approval_mode not in APPROVAL_MODES:
@@ -245,6 +245,27 @@ class Database:
             (conversation_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def bot_last_activity(self) -> dict[int, str]:
+        """آخر نشاط لكل بوت: أحدث created_at بين محادثاته ورسائلها.
+
+        البوت بلا أي محادثة غائب من القاموس (لا نشاط له إطلاقاً).
+        تستعمله هجرة الواجهة المشتركة في المحرّك لاختيار نموذج البوت
+        الأحدث نشاطاً بين بوتات المزوّد المختار.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT bot_id, MAX(created_at) AS last_at FROM (
+                SELECT bot_id, created_at FROM conversations
+                UNION ALL
+                SELECT c.bot_id AS bot_id, m.created_at AS created_at
+                FROM messages m
+                JOIN conversations c ON c.id = m.conversation_id
+            )
+            GROUP BY bot_id
+            """
+        ).fetchall()
+        return {int(r["bot_id"]): r["last_at"] for r in rows}
 
     def clear_bot_messages(self, bot_id: int) -> int:
         """يمسح كل رسائل محادثات هذا البوت نهائياً ويعيد عددها.

@@ -44,11 +44,11 @@ _MODIFIERS = ("ctrl", "alt", "shift", "win")
 _NAMED_KEYS = (
     "enter", "esc", "tab", "backspace", "delete", "insert",
     "up", "down", "left", "right", "home", "end",
-    "pageup", "pagedown", "space", "win",
+    "pageup", "pagedown", "space", "win", "printscreen",
 ) + tuple("f%d" % i for i in range(1, 13))
 _NAMED_KEY_SET = frozenset(_NAMED_KEYS)
 _MOUSE_TYPES = ("mouse_move", "mouse_down", "mouse_up", "wheel")
-_ALL_TYPES = _MOUSE_TYPES + ("key", "text")
+_ALL_TYPES = _MOUSE_TYPES + ("key", "text", "combo")
 _MAX_TEXT_LEN = 2000
 
 
@@ -127,6 +127,39 @@ def _validate_key_spec(raw):
     raise ValueError("مفتاح غير معروف: %s" % last)
 
 
+def _validate_combo_keys(raw):
+    """Normalize a combo key list or raise ValueError (Arabic).
+
+    A combo is 2..5 keys: every key but the last must be a modifier
+    (ctrl/alt/shift/win, no duplicates) and the last must be a named
+    key (see _VK_NAMED) or a single [a-z0-9] character.
+    """
+    if not isinstance(raw, (list, tuple)) or not (2 <= len(raw) <= 5):
+        raise ValueError("تركيبة المفاتيح يجب أن تكون قائمة من مفتاحين إلى خمسة")
+    keys = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError("مفتاح غير صالح في التركيبة")
+        keys.append(item.strip().lower())
+    if any(not key for key in keys):
+        raise ValueError("مفتاح فارغ في التركيبة")
+    mods, last = keys[:-1], keys[-1]
+    seen = set()
+    for mod in mods:
+        if mod not in _MODIFIERS:
+            raise ValueError("مفتاح تعديل غير معروف: %s" % mod)
+        if mod in seen:
+            raise ValueError("مفتاح تعديل مكرر: %s" % mod)
+        seen.add(mod)
+    if last in _MODIFIERS:
+        raise ValueError("تركيبة مفاتيح غير صالحة: آخر مفتاح لا يكون مفتاح تعديل")
+    if last in _VK_NAMED:
+        return keys
+    if len(last) == 1 and (("a" <= last <= "z") or ("0" <= last <= "9")):
+        return keys
+    raise ValueError("مفتاح غير معروف: %s" % last)
+
+
 def validate_input_event(ev):
     """Validate + normalize one input event dict.
 
@@ -171,6 +204,9 @@ def validate_input_event(ev):
 
     if etype == "key":
         return {"type": "key", "key": _validate_key_spec(ev.get("key"))}
+
+    if etype == "combo":
+        return {"type": "combo", "keys": _validate_combo_keys(ev.get("keys"))}
 
     # etype == "text"
     text = ev.get("text")
@@ -555,6 +591,9 @@ class InputSink:
     def key(self, spec):
         raise NotImplementedError
 
+    def combo(self, keys):
+        raise NotImplementedError
+
     def text(self, s):
         raise NotImplementedError
 
@@ -577,6 +616,9 @@ class FakeInputSink(InputSink):
     def key(self, spec):
         self.calls.append(("key", spec))
 
+    def combo(self, keys):
+        self.calls.append(("combo", tuple(keys)))
+
     def text(self, s):
         self.calls.append(("text", s))
 
@@ -596,6 +638,9 @@ class NullInputSink(InputSink):
         raise RuntimeError(self._MSG)
 
     def key(self, spec):
+        raise RuntimeError(self._MSG)
+
+    def combo(self, keys):
         raise RuntimeError(self._MSG)
 
     def text(self, s):
@@ -625,6 +670,7 @@ _VK_NAMED = {
     "delete": 0x2E, "insert": 0x2D, "up": 0x26, "down": 0x28,
     "left": 0x25, "right": 0x27, "home": 0x24, "end": 0x23,
     "pageup": 0x21, "pagedown": 0x22, "space": 0x20, "win": 0x5B,
+    "printscreen": 0x2C,
 }
 for _i in range(1, 13):
     _VK_NAMED["f%d" % _i] = 0x70 + (_i - 1)
@@ -766,25 +812,33 @@ class WindowsInputSink(InputSink):
         self._send([self._mouse_input(
             px, py, _MOUSEEVENTF_WHEEL, data & 0xFFFFFFFF)])
 
+    def _press_combo(self, mods, last):
+        """يضغط المعدِّلات نزولاً، ينقر المفتاح الأخير، ثم يحرّر
+        المعدِّلات صعوداً بترتيب عكسي — تسلسل «ctrl+c» نفسه."""
+        vk_mods = [_VK_MODIFIERS[m] for m in mods]
+        vk_main = _vk_for_token(last)
+        seq = [self._key_input(vk) for vk in vk_mods]
+        seq.append(self._key_input(vk_main))
+        seq.append(self._key_input(vk_main, flags=_KEYEVENTF_KEYUP))
+        for vk in reversed(vk_mods):
+            seq.append(self._key_input(vk, flags=_KEYEVENTF_KEYUP))
+        self._send(seq)
+
     def key(self, spec):
         spec = _validate_key_spec(spec)
         if "+" in spec:
             parts = spec.split("+")
-            mods, last = parts[:-1], parts[-1]
-            vk_mods = [_VK_MODIFIERS[m] for m in mods]
-            vk_main = _vk_for_token(last)
-            seq = [self._key_input(vk) for vk in vk_mods]
-            seq.append(self._key_input(vk_main))
-            seq.append(self._key_input(vk_main, flags=_KEYEVENTF_KEYUP))
-            for vk in reversed(vk_mods):
-                seq.append(self._key_input(vk, flags=_KEYEVENTF_KEYUP))
-            self._send(seq)
+            self._press_combo(parts[:-1], parts[-1])
             return
         vk = _vk_for_token(spec)
         self._send([
             self._key_input(vk),
             self._key_input(vk, flags=_KEYEVENTF_KEYUP),
         ])
+
+    def combo(self, keys):
+        keys = _validate_combo_keys(keys)
+        self._press_combo(keys[:-1], keys[-1])
 
     def text(self, s):
         if not isinstance(s, str) or not s:
@@ -839,6 +893,8 @@ def dispatch_input(sink, source_size, event):
             sink.wheel(px, py, ev["delta"])
     elif etype == "key":
         sink.key(ev["key"])
+    elif etype == "combo":
+        sink.combo(ev["keys"])
     elif etype == "text":
         sink.text(ev["text"])
     return {"ok": True, "type": etype}

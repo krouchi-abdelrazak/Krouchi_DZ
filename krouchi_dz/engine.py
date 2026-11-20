@@ -19,7 +19,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import control
+from . import control, i18n
 from .broker import ApprovalBroker
 from .config import ProviderConfig, load_providers, save_providers
 from .db import Database
@@ -40,6 +40,40 @@ from .secrets import SecretsStore
 MAX_TOOL_ROUNDS = 5          # حدّ جولات الأدوات في الرسالة الواحدة
 MAX_FILE_CHARS = 200_000     # حدّ حجم القراءة المعادة للنموذج
 COMMAND_TIMEOUT = 30.0       # مهلة تنفيذ أمر واحد (ثوانٍ)
+
+# -- الواجهة المشتركة: API واحدة لكل البوتات، تُدخَل مرة واحدة ------------
+SETTING_SHARED_PROVIDER = "shared_provider"
+SETTING_SHARED_MODEL = "shared_model"
+
+# -- توجيه البوت المدمج -----------------------------------------------------
+# أسماء الأدوات الحقيقية كما في providers.TOOLS حرفياً (لا أداة لقطة
+# شاشة للبوتات — اللقطة نقطة تحكّم هاتف في الخادم فقط).
+_TOOL_NAMES_AR = "، ".join(t["function"]["name"] for t in TOOLS)
+_TOOL_NAMES_EN = ", ".join(t["function"]["name"] for t in TOOLS)
+
+ORIENTATION_AR = (
+    "أنت بوت حاسوب داخل تطبيق Krouchi_DZ، تعمل على حاسوب المدير "
+    f"(المستخدم) وتنفّذ أوامره بأدواتك: {_TOOL_NAMES_AR}. "
+    "الأفعال الكبيرة تمرّ بموافقة المدير عبر وسيط الموافقات؛ نفّذ ما "
+    "يوافق عليه فقط، واذكر باختصار ما فعلته وما تعذّر عليك."
+)
+ORIENTATION_EN = (
+    "You are a computer bot inside the Krouchi_DZ app, running on the "
+    "director's (the user's) computer, carrying out his orders with "
+    f"your tools: {_TOOL_NAMES_EN}. Major actions pass through the "
+    "director's approval broker; only do what gets approved, and "
+    "briefly state what you did and what you could not do."
+)
+
+
+def orientation_text(lang: str | None = None) -> str:
+    """نصّ التوجيه المدمج بلغة الواجهة الحالية (العربية عند أي تعذّر)."""
+    if lang is None:
+        try:
+            lang = i18n.get_lang()
+        except Exception:
+            lang = "ar"
+    return ORIENTATION_EN if lang == "en" else ORIENTATION_AR
 
 
 class ChatCancelled(Exception):
@@ -103,10 +137,79 @@ class ChatEngine:
         self._provider_cache: dict[str, object] = {}
 
     # -- إدارة البوتات والمفاتيح ------------------------------------------
-    def create_bot(self, name: str, provider_name: str, **kwargs) -> int:
-        if provider_name not in self.providers:
+    def create_bot(
+        self, name: str, provider_name: str | None = None, **kwargs
+    ) -> int:
+        """ينشئ بوتاً. بلا مزوّد صريح (None) تُحفَظ لقطة اسم مزوّد
+        الواجهة المشتركة الحالية (أو '' إن لم تُضبَط بعد — العمود
+        NOT NULL و'' صالحة)؛ والاسم الصريح يُتحقَّق منه كالسابق.
+        المحادثة نفسها لا تستعمل هذه اللقطة إطلاقاً: الحسم عند
+        الإرسال من الواجهة المشتركة وحدها (انظر send_message)."""
+        if provider_name is None:
+            shared = self.get_shared_api()
+            provider_name = shared[0] if shared is not None else ""
+        elif provider_name not in self.providers:
             raise ValueError(f"مزوّد غير معروف: {provider_name}")
         return self.db.create_bot(name, provider_name, **kwargs)
+
+    # -- الواجهة المشتركة: API واحدة لكل البوتات ---------------------------
+    def get_shared_api(self) -> tuple[str, str] | None:
+        """(اسم المزوّد، النموذج) للواجهة المشتركة، أو None إن لم تُضبَط.
+
+        تُشغَّل الهجرة كسولاً أولاً (ensure_shared_api)؛ وإن كان
+        المزوّد المحفوظ غير موجود في تعريفات المزوّدين الحالية
+        فالواجهة غير مضبوطة (None) مهما كان النموذج المحفوظ.
+        """
+        self.ensure_shared_api()
+        name = self.db.get_setting(SETTING_SHARED_PROVIDER, "")
+        if not name or name not in self.providers:
+            return None
+        return (name, self.db.get_setting(SETTING_SHARED_MODEL, ""))
+
+    def set_shared_api(self, provider_name: str, model: str) -> None:
+        """يضبط الواجهة المشتركة (تُدخَل مرة واحدة وتعمل لكل البوتات)."""
+        if provider_name not in self.providers:
+            raise ValueError(f"مزوّد غير معروف: {provider_name}")
+        self.db.set_setting(SETTING_SHARED_PROVIDER, provider_name)
+        self.db.set_setting(SETTING_SHARED_MODEL, model or "")
+
+    def ensure_shared_api(self) -> None:
+        """هجرة لمرة واحدة إلى الواجهة المشتركة — لا تمسّ ضبطاً قائماً.
+
+        القاعدة حرفياً: إن كان إعداد shared_provider فارغاً وكانت
+        التعريفات غير فارغة: اختر أول مزوّد (بترتيب القاموس) له
+        مفتاح محفوظ (provider_configured)؛ فإن لم يوجد أي مفتاح
+        اختر أول مزوّد. والنموذج: بين البوتات التي مزوّدها المخزَّن
+        هو المختار ونموذجها غير فارغ، نموذجُ البوت الأحدث نشاطاً
+        (أحدث created_at لمحادثاته/رسائله)؛ فإن لم يوجد بوت مؤهّل
+        يبقى النموذج ''. يُحفَظ shared_provider دائماً في هذا الفرع،
+        وshared_model فقط إن وُجد نموذج. بلا مزوّدين: لا يُحفَظ شيء.
+        العملية كسولة ومكرَّرة بأمان (idempotent): ما إن يُحفَظ
+        shared_provider حتى لا تعود تعمل أبداً.
+        """
+        if self.db.get_setting(SETTING_SHARED_PROVIDER, ""):
+            return
+        if not self.providers:
+            return
+        chosen = None
+        for name in self.providers:
+            if self.provider_configured(name):
+                chosen = name
+                break
+        if chosen is None:
+            chosen = next(iter(self.providers))
+        activity = self.db.bot_last_activity()
+        best_model = ""
+        best_at: str | None = None
+        for bot in self.db.list_bots():
+            if bot["provider_name"] != chosen or not bot["model"]:
+                continue
+            at = activity.get(bot["id"], "")
+            if best_at is None or at > best_at:
+                best_at, best_model = at, bot["model"]
+        self.db.set_setting(SETTING_SHARED_PROVIDER, chosen)
+        if best_model:
+            self.db.set_setting(SETTING_SHARED_MODEL, best_model)
 
     def set_api_key(self, provider_name: str, api_key: str) -> None:
         """يحفظ مفتاح مزوّد في ملف الأسرار (لا في القاعدة)."""
@@ -316,9 +419,18 @@ class ChatEngine:
         bot = self.db.get_bot(bot_id)
         if bot is None:
             raise ValueError(f"بوت غير موجود: {bot_id}")
-        cfg = self.providers[bot["provider_name"]]
-        model = bot["model"] or cfg.default_model
-        provider = self._get_provider(bot["provider_name"])
+        # الحسم من الواجهة المشتركة وحدها: مزوّد البوت ونموذجه
+        # المخزَّنان لا يُستعملان إطلاقاً — API واحدة لكل البوتات.
+        shared = self.get_shared_api()
+        if shared is None:
+            raise ValueError(
+                "لم تُضبط الواجهة المشتركة بعد — أضف واجهة API "
+                "واختر نموذجاً واحداً لكل البوتات"
+            )
+        shared_name, model = shared
+        if not model:
+            raise ValueError("اختر نموذجاً للواجهة المشتركة أولاً")
+        provider = self._get_provider(shared_name)
         conv_id = self.db.get_or_create_conversation(bot_id)
 
         def _check_cancel() -> None:
@@ -326,8 +438,11 @@ class ChatEngine:
                 raise ChatCancelled("أُلغيت المحادثة بطلب الإلغاء")
 
         messages: list[dict] = []
+        # التوجيه المدمج أولاً دائماً، وتعليمات البوت الخاصة بعده.
+        system_content = orientation_text()
         if bot["system_prompt"]:
-            messages.append({"role": "system", "content": bot["system_prompt"]})
+            system_content += "\n\n" + bot["system_prompt"]
+        messages.append({"role": "system", "content": system_content})
         messages.extend(
             self._row_to_message(r) for r in self.db.get_messages(conv_id)
         )
@@ -556,4 +671,14 @@ class ChatEngine:
 
 
 # تصدير مريح: اسم المحرّك بوصفه واجهة البرنامج.
-__all__ = ["ChatEngine", "ChatCancelled", "default_data_dir", "MAX_TOOL_ROUNDS"]
+__all__ = [
+    "ChatEngine",
+    "ChatCancelled",
+    "default_data_dir",
+    "MAX_TOOL_ROUNDS",
+    "ORIENTATION_AR",
+    "ORIENTATION_EN",
+    "orientation_text",
+    "SETTING_SHARED_PROVIDER",
+    "SETTING_SHARED_MODEL",
+]

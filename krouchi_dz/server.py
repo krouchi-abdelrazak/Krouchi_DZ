@@ -23,7 +23,7 @@
 
 النقاط (JSON داخلاً وخارجاً):
 - GET  /api/ping                 → {"ok", "app", "version"}
-- GET  /api/bots                 → {"bots": [{"id","name","provider","model","mode"}]}
+- GET  /api/bots                 → {"bots": [{"id","name","provider","model","mode","avatar"}]}
 - GET  /api/history?bot=<id>     → {"messages": [...]} بنفس شكل المحرّك
 - POST /api/chat {bot_id, text}  → {"reply": ...} (+ حقل approval أحياناً)
 - GET  /api/approvals            → {"pending": [{"id","bot_name","tool","summary","created"}]}
@@ -123,6 +123,15 @@ PWA_FILES = {
     "icon-512.png": "image/png",
     "maskable-512.png": "image/png",
     "apple-touch-icon.png": "image/png",
+    # صور معرض أفاتار البوتات (assets/avatars في المصدر؛ تُخدَم من
+    # مجلد القشرة pwa/avatars إن وُضعت فيه، وإلا من مجلد المعرض —
+    # انظر static_file). الأسماء الستة حرفياً فقط: أي اسم آخر 404.
+    "avatars/bot_1.png": "image/png",
+    "avatars/bot_2.png": "image/png",
+    "avatars/bot_3.png": "image/png",
+    "avatars/bot_4.png": "image/png",
+    "avatars/bot_5.png": "image/png",
+    "avatars/bot_6.png": "image/png",
 }
 
 # متغيّر بيئة يتقدّم كل بحث تلقائي عن مجلد القشرة.
@@ -152,9 +161,12 @@ def find_pwa_dir() -> Path | None:
 def _static_name_for_path(path: str) -> str | None:
     """اسم ملف القشرة المقابل لمسار طلب، أو None إن لم يطابق شكلاً مسموحاً.
 
-    الشكلان المسموحان فقط: «/<file>» و«/app/<file>»، و«/» وحده يعني
-    index.html. الاسم نفسه يُفحص لاحقاً ضدّ القائمة البيضاء PWA_FILES
-    قبل أي لمس للقرص، فمقاطع «..» لا تصل إلى نظام الملفات أبداً.
+    الأشكال المسموحة فقط: «/<file>» و«/app/<file>»، و«/» وحده يعني
+    index.html، وصور المعرض «/avatars/<file>» و«/app/avatars/<file>»
+    وتُرجع الاسم «avatars/<file>». الاسم نفسه يُفحص لاحقاً ضدّ
+    القائمة البيضاء PWA_FILES قبل أي لمس للقرص، فمقاطع «..» لا تصل
+    إلى نظام الملفات أبداً (مثل «avatars/../x» لا يطابق أي شكل هنا،
+    وأسماء غير المعرض مثل «avatars/bot_99.png» تسقط في القائمة).
     """
     decoded = urllib.parse.unquote(path)
     segments = [seg for seg in decoded.split("/") if seg not in ("", ".")]
@@ -164,6 +176,14 @@ def _static_name_for_path(path: str) -> str | None:
         return segments[0]
     if len(segments) == 2 and segments[0] == "app":
         return segments[1]
+    if len(segments) == 2 and segments[0] == "avatars":
+        return f"avatars/{segments[1]}"
+    if (
+        len(segments) == 3
+        and segments[0] == "app"
+        and segments[1] == "avatars"
+    ):
+        return f"avatars/{segments[2]}"
     return None
 
 
@@ -579,8 +599,13 @@ class CompanionServer:
         """(محتوى، نوع) ملف قشرة باسم أساس، أو None إن لم يكن متاحاً.
 
         الاسم يجب أن يكون حرفياً أحد مفاتيح PWA_FILES — هذا هو حارس
-        العبور الوحيد اللازم: الاسم المفحوص لا يحتوي «/» أبداً،
-        فيُبنى المسار دائماً داخل مجلد القشرة نفسه.
+        العبور الوحيد اللازم: الأسماء العادية لا تحتوي «/» أبداً،
+        وأسماء المعرض هي الستة الحرفية «avatars/bot_N.png» فقط،
+        فيُبنى المسار دائماً داخل مجلد القشرة نفسه (أو مجلد المعرض).
+        صور المعرض: تُقرأ أولاً من «avatars/» داخل مجلد القشرة إن
+        وُضعت هناك؛ فإن غابت قُرئت من مجلد المعرض الحقيقي
+        (assets/avatars — انظر avatars.avatar_image_path) لأن
+        المعرض يعيش هناك في شجرة المصدر لا داخل pwa/.
         """
         content_type = PWA_FILES.get(name)
         if content_type is None or self.pwa_dir is None:
@@ -588,7 +613,17 @@ class CompanionServer:
         try:
             return (self.pwa_dir / name).read_bytes(), content_type
         except OSError:
-            return None
+            pass
+        if name.startswith("avatars/"):
+            from .avatars import avatar_image_path
+
+            gallery_path = avatar_image_path(name[len("avatars/"):])
+            if gallery_path is not None:
+                try:
+                    return gallery_path.read_bytes(), content_type
+                except OSError:
+                    return None
+        return None
 
     def stop(self) -> None:
         """يوقف الخدمة ويحرّر المنفذ. لا شيء إن كان متوقّفاً أصلاً."""
@@ -611,17 +646,29 @@ class CompanionServer:
     # -- عمليات المحرّك (تُستدعى من معالج الطلبات) ---------------------------
     def list_bots(self) -> list[dict]:
         def job(engine):
+            # الواجهة المشتركة هي الحقيقة عند الإرسال، فهي ما يُعرَض:
+            # «provider»/«model» منها حين تُضبَط، وتراجع إلى قيم
+            # البوت المخزَّنة حين لا واجهة مشتركة (الشكل لا يتغيّر).
+            shared = engine.get_shared_api()
             bots = []
             for bot in engine.db.list_bots():
-                cfg = engine.providers.get(bot["provider_name"])
+                if shared is not None:
+                    provider_name, model = shared
+                else:
+                    cfg = engine.providers.get(bot["provider_name"])
+                    provider_name = bot["provider_name"]
+                    model = bot["model"] or (cfg.default_model if cfg else "")
                 bots.append(
                     {
                         "id": bot["id"],
                         "name": bot["name"],
-                        "provider": bot["provider_name"],
-                        "model": bot["model"]
-                        or (cfg.default_model if cfg else ""),
+                        "provider": provider_name,
+                        "model": model,
                         "mode": bot["approval_mode"],
+                        # اسم ملف المعرض ("bot_3.png") أو "" ⇒ أحادي
+                        # الحرف عند العميل؛ القيم القديمة تمرّ كما هي
+                        # فيتعامل معها العميل كغير معرضية أيضاً.
+                        "avatar": bot.get("avatar") or "",
                     }
                 )
             return bots
@@ -682,6 +729,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- أدوات الردّ والقراءة ----------------------------------------------
     def _send_json(self, status: int, payload: dict) -> None:
+        self._response_started = True
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -956,6 +1004,25 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- تحكّم الهاتف بالحاسوب ---------------------------------------------------
     def _route_control(self, method: str, path: str, parsed) -> None:
+        """درع عائلة التحكّم: أي استثناء يفلت من منفّذ/قائمة منصّة يصير
+        500 JSON بدل إسقاط الاتصال على الهاتف (حدث فعلياً مع قائمة
+        نوافذ فاشلة: «Connection reset»). الردّ يُرسَل فقط إن لم يكن
+        شيء قد أُرسل بعد — بثّ الشاشة مثلاً يرسل ترويساته بنفسه.
+        التعيينات الخاصة داخل الجسم (400/501/الموافقات) تبقى كما هي
+        لأنها تُرسَل ردوداً ولا ترفع استثناءات.
+        """
+        try:
+            self._route_control_body(method, path, parsed)
+        except (BrokenPipeError, ConnectionResetError):
+            raise
+        except Exception as exc:
+            if not getattr(self, "_response_started", False):
+                try:
+                    self._send_json(500, {"error": str(exc)})
+                except Exception:
+                    pass
+
+    def _route_control_body(self, method: str, path: str, parsed) -> None:
         srv = self._srv
         root = srv.control_root
         query = urllib.parse.parse_qs(parsed.query)
@@ -1343,6 +1410,7 @@ class _Handler(BaseHTTPRequestHandler):
         )
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
+        self._response_started = True
         srv._note_screen_stream(+1)
         interval = 1.0 / fps
         try:

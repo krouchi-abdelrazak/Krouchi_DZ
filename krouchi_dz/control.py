@@ -12,6 +12,9 @@ clipboard_getter / clipboard_setter في CompanionServer) — فالاختبار
 
 from __future__ import annotations
 
+import csv
+import ctypes
+import io
 import os
 import platform
 import shutil
@@ -167,16 +170,28 @@ def list_dir(root: Path, target: Path) -> dict:
 def take_screenshot() -> tuple[bytes, str] | None:
     """لقطة PNG من سطح المكتب، أو None إن تعذّرت على هذه المنصّة.
 
-    ويندوز: PowerShell + System.Drawing إلى ملف مؤقت. غيره: None
-    (يردّ الخادم 501) — لا أدوات خارجية تُفترَض.
+    ويندوز: Pillow/ImageGrab أولاً — التقاط مباشر إلى PNG في الذاكرة
+    (المكتبة تأتي مع حزمة ويندوز أصلاً لمصدر الشاشة الحيّ). غيابها أو
+    فشل الالتقاط بها يهبط إلى الاحتياطي: PowerShell + System.Drawing
+    إلى ملف مؤقت. غير ويندوز: None (يردّ الخادم 501) — لا أدوات
+    خارجية تُفترَض.
     """
     if not IS_WINDOWS:
         return None
+    try:
+        from PIL import ImageGrab
+
+        image = ImageGrab.grab()
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue(), "png"
+    except Exception:
+        pass  # لا Pillow أو فشل الالتقاط بها: جرّب مسار PowerShell
     tmp = Path(tempfile.gettempdir()) / "krouchi_screenshot.png"
     script = (
         "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
         "$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;"
-        "$bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height;"
+        "$bmp=New-Object System.Drawing.Bitmap($b.Width, $b.Height);"
         "$g=[System.Drawing.Graphics]::FromImage($bmp);"
         "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);"
         f"$bmp.Save('{tmp}',[System.Drawing.Imaging.ImageFormat]::Png);"
@@ -323,36 +338,39 @@ def list_processes(runner=None, limit: int = 50) -> list[dict]:
     """أثقل العمليات ذاكرةً (حتى limit): [{pid, name, mem_mb}].
 
     runner: دالة (argv) -> (returncode, stdout) قابلة للحقن.
-    ويندوز: Get-Process عبر PowerShell. غيره: ps مرتبة بالذاكرة.
+    ويندوز: tasklist بصيغة CSV (بلا ترويسة)، تُفرز بالذاكرة هنا.
+    غيره: ps مرتبة بالذاكرة.
     """
     run = runner or _run_capture
     processes: list[dict] = []
     try:
         if IS_WINDOWS:
-            rc, out = run(
-                [
-                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
-                    "Get-Process | Sort-Object WS -Descending | "
-                    f"Select-Object -First {limit} | ForEach-Object "
-                    "{ \"$($_.Id)|$($_.ProcessName)|"
-                    "$([math]::Round($_.WS/1MB,1))\" }",
-                ]
-            )
+            rc, out = run(["tasklist", "/FO", "CSV", "/NH"])
             if rc == 0:
-                for line in out.splitlines():
-                    parts = line.split("|")
-                    if len(parts) != 3:
+                for row in csv.reader(io.StringIO(out)):
+                    # "Image Name","PID","Session Name","Session#","Mem Usage"
+                    if len(row) < 5:
                         continue
+                    name = row[0].strip()
+                    mem_raw = row[4].strip()
+                    if mem_raw.endswith(" K"):
+                        mem_raw = mem_raw[:-2]
                     try:
-                        processes.append(
-                            {
-                                "pid": int(parts[0]),
-                                "name": parts[1].strip(),
-                                "mem_mb": float(parts[2]),
-                            }
-                        )
+                        pid = int(row[1])
+                        mem_kb = int(mem_raw.replace(",", "").strip())
                     except ValueError:
                         continue
+                    if not name:
+                        continue
+                    processes.append(
+                        {
+                            "pid": pid,
+                            "name": name,
+                            "mem_mb": round(mem_kb / 1024, 1),
+                        }
+                    )
+                processes.sort(key=lambda p: p["mem_mb"], reverse=True)
+                processes = processes[:limit]
         else:
             rc, out = run(["ps", "-eo", "pid=,comm=,rss=", "--sort=-rss"])
             if rc == 0:
@@ -421,34 +439,126 @@ def _run_capture(argv: list[str], timeout: float = 15.0) -> tuple[int, str]:
     return proc.returncode, proc.stdout or ""
 
 
+# أعلام تعداد الطابعات في winspool: المحلية + اتصالات الشبكة المحفوظة.
+_PRINTER_ENUM_LOCAL = 0x00000002
+_PRINTER_ENUM_CONNECTIONS = 0x00000004
+
+
+class _SystemTime(ctypes.Structure):
+    """SYSTEMTIME في winspool (8 قيم WORD) — جزء من PRINTER_INFO_2."""
+
+    _fields_ = [
+        (name, ctypes.c_ushort)
+        for name in (
+            "wYear", "wMonth", "wDayOfWeek", "wDay",
+            "wHour", "wMinute", "wSecond", "wMilliseconds",
+        )
+    ]
+
+
+class _PrinterInfo2(ctypes.Structure):
+    """PRINTER_INFO_2 كما يعيدها EnumPrintersW عند المستوى 2."""
+
+    _fields_ = [
+        ("pServerName", ctypes.c_wchar_p),
+        ("pPrinterName", ctypes.c_wchar_p),
+        ("pShareName", ctypes.c_wchar_p),
+        ("pPortName", ctypes.c_wchar_p),
+        ("pDriverName", ctypes.c_wchar_p),
+        ("pComment", ctypes.c_wchar_p),
+        ("pLocation", ctypes.c_wchar_p),
+        ("pDevMode", ctypes.c_void_p),
+        ("pSepFile", ctypes.c_wchar_p),
+        ("pPrintProcessor", ctypes.c_wchar_p),
+        ("pDatatype", ctypes.c_wchar_p),
+        ("pParameters", ctypes.c_wchar_p),
+        ("pSecurityDescriptor", ctypes.c_void_p),
+        ("Attributes", ctypes.c_uint32),
+        ("Priority", ctypes.c_uint32),
+        ("DefaultPriority", ctypes.c_uint32),
+        ("StartTime", _SystemTime),
+        ("UntilTime", _SystemTime),
+        ("Status", ctypes.c_uint32),
+        ("cJobs", ctypes.c_uint32),
+        ("AveragePPM", ctypes.c_uint32),
+    ]
+
+
+def _parse_printer_records(buffer, count: int, default_name: str = "") -> list[dict]:
+    """يفكّ سجلّات PRINTER_INFO_2 من مخزن ctypes إلى [{name, is_default}].
+
+    buffer: أي كائن ctypes يبدأ عنده صفّ السجلّات (مخزن EnumPrintersW
+    في الإنتاج، أو صفّ مُصنّع في الاختبارات). السجلّات بلا اسم تُتخطّى.
+    """
+    printers: list[dict] = []
+    if count <= 0:
+        return printers
+    entries = (_PrinterInfo2 * int(count)).from_address(ctypes.addressof(buffer))
+    for entry in entries:
+        name = entry.pPrinterName
+        if name:
+            printers.append(
+                {"name": name, "is_default": bool(default_name) and name == default_name}
+            )
+    return printers
+
+
+def _default_printer_name(winspool) -> str:
+    """اسم الطابعة الافتراضية عبر GetDefaultPrinterW، أو "" إن تعذّر."""
+    from ctypes import wintypes
+
+    size = wintypes.DWORD(0)
+    winspool.GetDefaultPrinterW(None, ctypes.byref(size))
+    if size.value == 0:
+        return ""
+    buffer = ctypes.create_unicode_buffer(size.value)
+    if winspool.GetDefaultPrinterW(buffer, ctypes.byref(size)):
+        return buffer.value
+    return ""
+
+
+def _list_printers_windows() -> list[dict]:
+    """طابعات ويندوز عبر winspool.drv: EnumPrintersW بمستوى 2.
+
+    نداءان: الأول بمخزن صفري لمعرفة الحجم المطلوب (pcbNeeded)، ثم
+    تخصيص المخزن والنداء الثاني الفعلي. أي فشل = قائمة فارغة.
+    """
+    from ctypes import wintypes
+
+    winspool = ctypes.WinDLL("winspool.drv")
+    flags = _PRINTER_ENUM_LOCAL | _PRINTER_ENUM_CONNECTIONS
+    needed = wintypes.DWORD(0)
+    returned = wintypes.DWORD(0)
+    winspool.EnumPrintersW(
+        flags, None, 2, None, 0, ctypes.byref(needed), ctypes.byref(returned)
+    )
+    if needed.value == 0:
+        return []
+    buffer = ctypes.create_string_buffer(needed.value)
+    ok = winspool.EnumPrintersW(
+        flags, None, 2, buffer, needed.value,
+        ctypes.byref(needed), ctypes.byref(returned),
+    )
+    if not ok:
+        return []
+    return _parse_printer_records(
+        buffer, returned.value, _default_printer_name(winspool)
+    )
+
+
 def list_printers(runner=None) -> list[dict]:
     """الطابعات المعروفة للنظام: [{name, is_default}] — قد تكون فارغة.
 
+    ويندوز: winspool.drv عبر ctypes (EnumPrintersW). غيره: lpstat.
     runner: دالة (argv) -> (returncode, stdout) قابلة للحقن في
-    الاختبارات؛ الافتراضي يشغّل أوامر النظام فعلياً.
+    الاختبارات لمسار lpstat؛ الافتراضي يشغّل أوامر النظام فعلياً.
     """
-    run = runner or _run_capture
     printers: list[dict] = []
     try:
         if IS_WINDOWS:
-            rc, out = run(
-                [
-                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
-                    "Get-CimInstance Win32_Printer | "
-                    "ForEach-Object { \"$($_.Name)|$($_.Default)\" }",
-                ]
-            )
-            if rc == 0:
-                for line in out.splitlines():
-                    name, _, is_default = line.rpartition("|")
-                    if name.strip():
-                        printers.append(
-                            {
-                                "name": name.strip(),
-                                "is_default": is_default.strip().lower() == "true",
-                            }
-                        )
-        elif shutil.which("lpstat"):
+            return _list_printers_windows()
+        run = runner or _run_capture
+        if shutil.which("lpstat"):
             rc, out = run(["lpstat", "-a"])
             names = []
             if rc == 0:
