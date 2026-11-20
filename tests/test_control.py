@@ -106,7 +106,7 @@ class TestStatus(ControlFixture):
         status, data = self.request("GET", "/api/status")
         self.assertEqual(status, 200)
         self.assertEqual(data["app"], "Krouchi_DZ")
-        self.assertEqual(data["version"], "3.3.1")
+        self.assertEqual(data["version"], "3.3.2")
         self.assertTrue(data["os"])
         self.assertTrue(data["platform"])
         self.assertTrue(data["hostname"])

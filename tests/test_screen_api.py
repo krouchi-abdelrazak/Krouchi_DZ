@@ -8,8 +8,14 @@
 control_enabled، 501 للمنصّات غير المدعومة، تحويل إحداثيات
 الفأرة النسبية إلى بكسلات حجم المصدر، أحداث المفاتيح والنص،
 وعدّاد screen_viewers في /api/status.
+
+الإصدار 3.3.2 — إطار الشاشة المفرد /api/screen/frame: حمولة
+JPEG صالحة الفكّ مع العرض/الارتفاع من المصدر، مصادقة الترويسة
+حصراً (لا استثناء ?token= هنا)، بوّابة control_enabled، 501
+لغير المدعوم، وعدّ طلب الإطار مشاهدةً حديثة في screen_viewers.
 """
 
+import base64
 import http.client
 import sys
 import time
@@ -147,6 +153,73 @@ class TestScreenStream(ScreenFixture):
         status, data = self.request("GET", "/api/screen/stream")
         self.assertEqual(status, 501)
         self.assertIn("error", data)
+
+
+class TestScreenFrame(ScreenFixture):
+    """الإصدار 3.3.2: /api/screen/frame — إطار JPEG واحد في JSON."""
+
+    def test_frame_returns_decodable_jpeg_with_size(self):
+        self.make_screen_server()
+        status, data = self.request("GET", "/api/screen/frame")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["format"], "jpeg")
+        self.assertEqual(data["width"], 800)
+        self.assertEqual(data["height"], 600)
+        raw = base64.b64decode(data["image_b64"], validate=True)
+        self.assertTrue(raw.startswith(b"\xff\xd8"))  # JPEG SOI
+        self.assertTrue(raw.endswith(b"\xff\xd9"))    # JPEG EOI
+        self.assertIn(b"FAKEJPEG", raw)
+
+    def test_frame_params_reach_source(self):
+        self.make_screen_server()
+        status, data = self.request("GET", "/api/screen/frame?w=640&q=45")
+        self.assertEqual(status, 200)
+        raw = base64.b64decode(data["image_b64"])
+        self.assertIn(b"mw640-q45", raw)
+
+    def test_frame_without_token_is_401(self):
+        self.make_screen_server()
+        status, data = self.request("GET", "/api/screen/frame", token=None)
+        self.assertEqual(status, 401)
+        self.assertIn("error", data)
+
+    def test_frame_query_token_is_not_accepted(self):
+        # استثناء ?token= خاصّ بمسار البثّ وحده (عنصر <img>)؛ الإطار
+        # المفرد يمرّ بقناة الطلبات العادية فمصادقة الترويسة إلزامية
+        self.make_screen_server()
+        status, _ = self.request(
+            "GET", f"/api/screen/frame?token={TOKEN}", token=None
+        )
+        self.assertEqual(status, 401)
+
+    def test_frame_control_disabled_is_403(self):
+        self.make_screen_server()
+        self.server.engine_call(
+            lambda e: e.db.set_setting("control_enabled", "false")
+        )
+        status, data = self.request("GET", "/api/screen/frame")
+        self.assertEqual(status, 403)
+        self.assertEqual(data["error"], "control disabled")
+
+    def test_frame_unsupported_source_is_501(self):
+        self.make_server(
+            screen_source=remote.UnsupportedScreenSource(),
+            input_sink=remote.NullInputSink(),
+        )
+        status, data = self.request("GET", "/api/screen/frame")
+        self.assertEqual(status, 501)
+        self.assertIn("error", data)
+
+    def test_frame_counts_as_recent_viewer_in_status(self):
+        self.make_screen_server()
+        status, data = self.request("GET", "/api/status")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["screen_viewers"], 0)
+        status, _ = self.request("GET", "/api/screen/frame")
+        self.assertEqual(status, 200)
+        status, data = self.request("GET", "/api/status")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["screen_viewers"], 1)
 
 
 class TestInputApi(ScreenFixture):
