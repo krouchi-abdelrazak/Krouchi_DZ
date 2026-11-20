@@ -61,7 +61,7 @@ var STRINGS = {
     btn_pc_back: 'عودة إلى بوتات الحاسوب',
     about_title: 'حول Krouchi_DZ',
     about_author: 'تأليف: كروشي عبد الرزاق',
-    about_p1: 'الإصدار 3.3.1 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
+    about_p1: 'الإصدار 3.3.2 — رفيق الهاتف لبرنامج Krouchi_DZ المكتبي، بشيفرة أصلية مكتوبة من الصفر.',
     about_p2: 'وضعان: <b>مستقل على الهاتف</b> (إدخال API واكتشاف النماذج والمحادثة — لا أدوات ملفات ولا تشغيل أوامر على الهاتف)، و<b>مرافق للحاسوب</b> من تبويب «الحاسوب»: محادثة عبر بوتات الحاسوب، والموافقة على طلبات تنفيذه أو رفضها من هاتفك.',
     about_p3: 'مفاتيحك ومحادثاتك محفوظة في تخزين هذا التطبيق الخاص على هاتفك، ولا تغادر بياناتك الجهاز إلا إلى مزوّد النماذج الذي تختاره وبمفتاحك — أو إلى حاسوبك أنت عند استعمال الوضع المرافق.',
     label_language: 'اللغة',
@@ -295,7 +295,7 @@ var STRINGS = {
     btn_pc_back: 'Back to computer bots',
     about_title: 'About Krouchi_DZ',
     about_author: 'By Krouchi Abderrazak',
-    about_p1: 'Version 3.3.1 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
+    about_p1: 'Version 3.3.2 — the phone companion to the Krouchi_DZ desktop program, with original code written from scratch.',
     about_p2: 'Two modes: <b>standalone on the phone</b> (API entry, model discovery and chat — no file tools and no command execution on the phone), and a <b>computer companion</b> from the "Computer" tab: chat through the computer\'s bots, and approve or deny its execution requests from your phone.',
     about_p3: 'Your keys and conversations are stored in this app\'s private storage on your phone, and your data leaves the device only to the model provider you choose, with your own key — or to your own computer when using the companion mode.',
     label_language: 'Language',
@@ -1356,8 +1356,12 @@ function killBody(pid) {
 /* ---------- الشاشة الحية والإدخال عن بعد (v3.3) ----------
  * عقد الخادم:
  *   GET  /api/screen/stream?token=&w=&q=&fps= → بثّ MJPEG يُوضَع في <img>
+ *   GET  /api/screen/frame?w=&q=              → إطار JPEG واحد (JSON ‏base64)
  *   POST /api/input {type, x, y, ...}         → {ok} حدث إدخال واحد
- * الإحداثيات طبيعية 0..1 نسبةً إلى شاشة الحاسوب. */
+ * الإحداثيات طبيعية 0..1 نسبةً إلى شاشة الحاسوب.
+ * منذ v3.3.2 تسحب الواجهة الإطارات عبر /api/screen/frame بقناة
+ * pcRequest نفسها (الجسر/fetch) لا عبر <img> للبثّ: أصل التطبيق
+ * https وهمي فيحجب WebView كلَّ مورد http:// صافٍ كمختلط. */
 var PC_INPUT_TIMEOUT_MS = 15000;
 
 /* قصّ قيمة إلى المجال 0..1 (غير الرقمي → 0) */
@@ -1379,6 +1383,16 @@ function screenStreamUrl(pc, opts) {
     + '&w=' + encodeURIComponent(w)
     + '&q=' + encodeURIComponent(q)
     + '&fps=' + encodeURIComponent(fps);
+}
+
+/* مسار إطار الشاشة المفرد (v3.3.2) — مسار نسبي فقط: يبني
+ * pcRequest منه العنوان الكامل بالترويسات، فلا رمز في الاستعلام. */
+function screenFramePath(opts) {
+  opts = opts || {};
+  var w = Number(opts.w) || 1280;
+  var q = Number(opts.q) || 60;
+  return '/api/screen/frame?w=' + encodeURIComponent(w)
+    + '&q=' + encodeURIComponent(q);
 }
 
 /* نقطة لمس/فأرة على الصورة → إحداثيات طبيعية 0..1 نسبةً إلى مستطيلها */
@@ -1507,7 +1521,8 @@ if (typeof module !== 'undefined' && module.exports) {
     windowBody: windowBody, parseProcesses: parseProcesses,
     killBody: killBody,
     PC_INPUT_TIMEOUT_MS: PC_INPUT_TIMEOUT_MS,
-    screenStreamUrl: screenStreamUrl, normPoint: normPoint,
+    screenStreamUrl: screenStreamUrl, screenFramePath: screenFramePath,
+    normPoint: normPoint,
     inputMouseBody: inputMouseBody, inputWheelBody: inputWheelBody,
     inputKeyBody: inputKeyBody, inputTextBody: inputTextBody
   };
@@ -2829,6 +2844,15 @@ var pcScreenOn = false;
 var pcScreenDragMode = false;
 var pcScreenPtr = null;
 var pcScreenInputFailed = false;
+var pcScreenTimer = null;
+var pcScreenFails = 0;
+
+/* حلقة سحب الإطارات (v3.3.2): مهلة طلب الإطار الواحد، والفاصل
+ * بعد استقرار كل طلب قبل جلب التالي (لا طلبان متزامنان أبداً)،
+ * وعدد الإخفاقات المتتالية الذي يوقف الحلقة بخطأ الشاشة. */
+var PC_SCREEN_FRAME_TIMEOUT_MS = 15000;
+var PC_SCREEN_FRAME_DELAY_MS = 120;
+var PC_SCREEN_MAX_FAILS = 3;
 
 function renderScreenButtons() {
   var start = el('screen-start');
@@ -2841,16 +2865,49 @@ function startPcScreen() {
   if (!pcCfg) return;
   setBoxStatus('screen-status', '', null);
   pcScreenInputFailed = false;
-  var img = el('pcScreenImg');
-  img.src = screenStreamUrl(pcCfg, { w: 1280, q: 60, fps: 10 });
-  img.style.display = 'block';
+  pcScreenFails = 0;
   pcScreenOn = true;
   renderScreenButtons();
+  pcScreenTick();
+}
+
+/* جلب إطار واحد ثم جدولة التالي بعد استقراره (~120ms): الإطارات
+ * تأتي عبر pcRequest (الجسر/fetch) — قناة المحادثة المجرّبة نفسها —
+ * لا عبر <img> ببثّ MJPEG الذي يحجبه WebView كمختلط من أصل
+ * التطبيق https الوهمي. إخفاقات متتالية (3) توقف الحلقة وتُظهر
+ * خطأ الشاشة المعتاد عبر onScreenImgError. */
+function pcScreenTick() {
+  if (!pcScreenOn) return;
+  pcRequest(pcCfg, 'GET', screenFramePath({ w: 1280, q: 60 }), null,
+    PC_SCREEN_FRAME_TIMEOUT_MS)
+    .then(function (resp) {
+      if (!pcScreenOn) return;
+      pcScreenFails = 0;
+      var img = el('pcScreenImg');
+      if (img) {
+        img.src = screenshotDataUri(parseScreenshot(resp));
+        img.style.display = 'block';
+      }
+      pcScreenTimer = setTimeout(pcScreenTick, PC_SCREEN_FRAME_DELAY_MS);
+    })
+    .catch(function () {
+      if (!pcScreenOn) return;
+      pcScreenFails++;
+      if (pcScreenFails >= PC_SCREEN_MAX_FAILS) {
+        onScreenImgError();
+        return;
+      }
+      pcScreenTimer = setTimeout(pcScreenTick, PC_SCREEN_FRAME_DELAY_MS);
+    });
 }
 
 function stopPcScreen() {
   pcScreenOn = false;
   pcScreenPtr = null;
+  if (pcScreenTimer != null) {
+    clearTimeout(pcScreenTimer);
+    pcScreenTimer = null;
+  }
   var img = el('pcScreenImg');
   if (img) {
     img.removeAttribute('src');
@@ -2859,8 +2916,8 @@ function stopPcScreen() {
   renderScreenButtons();
 }
 
-/* فشل تحميل البثّ (رمز خاطئ أو تحكّم معطّل أو نظام لا يدعم البثّ):
- * الصورة لا تصل أبداً — نعود إلى حالة الإيقاف مع ملاحظة. */
+/* فشل جلب الإطارات (رمز خاطئ أو تحكّم معطّل أو نظام لا يدعم
+ * الالتقاط): الصورة لا تصل أبداً — نعود إلى حالة الإيقاف مع ملاحظة. */
 function onScreenImgError() {
   if (!pcScreenOn) return;
   stopPcScreen();
