@@ -1,6 +1,87 @@
-# Krouchi_DZ — a local-first personal agent
+<p align="center">
+  <img src="assets/banner.png" alt="Krouchi_DZ — One brain. Many hands. Your personal AI administration." width="100%">
+</p>
 
-**By Krouchi Abderrazak — تأليف: كروشي عبد الرزاق**
+<h1 align="center">Krouchi_DZ</h1>
+
+<p align="center">
+  <strong>A local-first personal AI agent that runs an administration for you:</strong><br>
+  you are the director — the bots on your phone are the <strong>brain</strong> that thinks, plans and delegates,<br>
+  and the bots on your computer are the <strong>hands and eyes</strong> that type, read, see and execute — with your approval.
+</p>
+
+<p align="center">
+  <strong>By Krouchi Abderrazak — تأليف: كروشي عبد الرزاق</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest"><img src="https://img.shields.io/github/v/release/krouchi-abdelrazak/Krouchi_DZ?style=for-the-badge&color=4f46e5&label=Latest%20release" alt="Latest release"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases"><img src="https://img.shields.io/github/downloads/krouchi-abdelrazak/Krouchi_DZ/total?style=for-the-badge&color=7c3aed&label=Downloads" alt="Downloads"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/stargazers"><img src="https://img.shields.io/github/stars/krouchi-abdelrazak/Krouchi_DZ?style=for-the-badge&color=6366f1&label=Stars" alt="Stars"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20Android%20%7C%20Linux%20%7C%20macOS%20%7C%20iPhone-4f46e5?style=for-the-badge" alt="Platforms">
+  <img src="https://img.shields.io/badge/Interface-Arabic%20%2B%20English-7c3aed?style=for-the-badge" alt="Arabic + English interface">
+  <img src="https://img.shields.io/badge/Local--first-No%20telemetry-059669?style=for-the-badge" alt="Local-first, no telemetry">
+  <img src="https://img.shields.io/badge/Keys-Your%20own%20API%20keys-b45309?style=for-the-badge" alt="Your own API keys">
+</p>
+
+## Meet the team
+
+<p align="center">
+  <img src="assets/avatars/bot_1.png" width="96" alt="Bot avatar 1">
+  <img src="assets/avatars/bot_2.png" width="96" alt="Bot avatar 2">
+  <img src="assets/avatars/bot_3.png" width="96" alt="Bot avatar 3">
+  <img src="assets/avatars/bot_4.png" width="96" alt="Bot avatar 4">
+  <img src="assets/avatars/bot_5.png" width="96" alt="Bot avatar 5">
+  <img src="assets/avatars/bot_6.png" width="96" alt="Bot avatar 6">
+</p>
+
+<p align="center">
+  Every bot has a name, a face, a role and an approval mode — and all of them share one intelligence: <strong>Krouchi AI</strong>.
+</p>
+
+## The idea — an administration, not a chatbot
+
+```
+        You — the Director
+               │  orders go down, reports come up
+               ▼
+   Phone bots — the BRAIN
+   understand · plan · delegate tasks · compile reports
+               │  tasks, over LAN or Tailscale
+               ▼
+   PC bots — the HANDS and EYES
+   type in any program · read documents · see the screen
+   run commands · manage windows — always under the approval broker
+```
+
+## Highlights
+
+| | |
+|---|---|
+| **One shared brain** | **Krouchi AI**: one provider, one key, one model — entered once, used by every bot. Add other providers and switch by choice. |
+| **Bots that learn** | Persistent **skills** and **memory** on phone and PC. Teach a bot a skill once — it keeps it. Phone bots can teach PC bots. |
+| **Bots that see** | With a vision model, a PC bot reads its own screen; a phone bot can look at the computer's screen, or ask for a photo from the phone camera. |
+| **Bots that act** | Type in **any** program (Word included), read documents (docx, xlsx, PDF, text), open programs, manage windows and processes, print, control volume and power. |
+| **Long-running tasks** | Assign a task and let it run: the bot works through its steps and reports back — done, failed, or waiting for your approval. |
+| **Approval first** | A permission broker guards every action: ask (default, fails closed), full, or read-only — per bot, with a full audit log. |
+| **Reach your PC anywhere** | Pair over your home network or from anywhere through Tailscale. Wake-on-LAN supported. |
+| **Attach anything** | The **(+)** button lets a bot read any file you attach — documents, spreadsheets, images. |
+| **Five platforms** | Windows (installer + portable), Android, Linux, macOS, and an iPhone web app — one project, one behavior. |
+| **Yours, privately** | Original code, written from scratch. No telemetry: your data never leaves your machines except to the model provider you choose, with your own key. |
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/v3.8.0/main_window.png" width="88%" alt="Krouchi_DZ desktop — main window">
+</p>
+
+<p align="center">
+  <img src="screenshots/v3.8.0/shared_api_dialog.png" width="43%" alt="Krouchi AI — the shared intelligence settings">
+  <img src="screenshots/v3.8.0/add_api_dialog.png" width="43%" alt="Add API — any key, any URL">
+</p>
 
 ## Download — direct links (always the latest release)
 
