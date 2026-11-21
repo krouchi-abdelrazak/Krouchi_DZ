@@ -4,6 +4,15 @@
 
 ## Download — direct links (always the latest release)
 
+[![Download — Windows Installer](https://img.shields.io/badge/Download-Windows_Installer-4f46e5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe)
+[![Download — Windows Portable](https://img.shields.io/badge/Download-Windows_Portable-7c3aed?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip)
+[![Download — Android](https://img.shields.io/badge/Download-Android_APK-4f46e5?style=for-the-badge&logo=android&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk)
+[![Download — Linux](https://img.shields.io/badge/Download-Linux-7c3aed?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip)
+[![Download — macOS](https://img.shields.io/badge/Download-macOS-4f46e5?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip)
+[![Download — iPhone](https://img.shields.io/badge/Download-iPhone_Web_App-7c3aed?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip)
+[![User Guide — Arabic](https://img.shields.io/badge/User_Guide-Arabic-6366f1?style=for-the-badge&logo=gitbook&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md)
+[![User Guide — English](https://img.shields.io/badge/User_Guide-English-6366f1?style=for-the-badge&logo=gitbook&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md)
+
 | Platform | Direct download |
 |---|---|
 | Windows — installer | [Krouchi_DZ_Setup.exe](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe) |
