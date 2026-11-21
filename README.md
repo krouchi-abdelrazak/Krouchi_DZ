@@ -102,7 +102,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip"><img src="https://img.shields.io/badge/Download-Windows_Portable-7c3aed?style=for-the-badge&logo=windows&logoColor=white" alt="Download — Windows Portable"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="Download — Windows Portable"></a>
   <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip"><img src="https://img.shields.io/badge/Download-macOS-4f46e5?style=for-the-badge&logo=apple&logoColor=white" alt="Download — macOS"></a>
 </p>
 
