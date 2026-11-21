@@ -22,6 +22,7 @@
   <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest"><img src="https://img.shields.io/github/v/release/krouchi-abdelrazak/Krouchi_DZ?style=for-the-badge&color=4f46e5&label=Latest%20release" alt="Latest release"></a>
   <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases"><img src="https://img.shields.io/github/downloads/krouchi-abdelrazak/Krouchi_DZ/total?style=for-the-badge&color=7c3aed&label=Downloads" alt="Downloads"></a>
   <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/stargazers"><img src="https://img.shields.io/github/stars/krouchi-abdelrazak/Krouchi_DZ?style=for-the-badge&color=6366f1&label=Stars" alt="Stars"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ"><img src="https://komarev.com/ghpvc/?username=krouchi-abdelrazak&label=Visitors&color=059669&style=for-the-badge" alt="Visitors"></a>
 </p>
 
 <p align="center">
