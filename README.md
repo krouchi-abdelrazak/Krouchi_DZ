@@ -2,9 +2,29 @@
 
 **By Krouchi Abderrazak — تأليف: كروشي عبد الرزاق**
 
+## Download — direct links (always the latest release)
+
+| Platform | Direct download |
+|---|---|
+| Windows — installer | [Krouchi_DZ_Setup.exe](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe) |
+| Windows — portable zip | [Krouchi_DZ_Windows.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip) |
+| Android | [Krouchi_DZ.apk](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk) |
+| Linux | [Krouchi_DZ_Linux.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip) |
+| macOS | [Krouchi_DZ_macOS.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip) |
+| iPhone — web app package | [Krouchi_DZ_iPhone.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip) |
+| User guide — Arabic | [Krouchi_DZ_User_Guide_AR.md](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md) |
+| User guide — English | [Krouchi_DZ_User_Guide_EN.md](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md) |
+
+iPhone: the web app is also live at
+[krouchi-abdelrazak.github.io/Krouchi_DZ/pwa](https://krouchi-abdelrazak.github.io/Krouchi_DZ/pwa/)
+— open it in Safari and choose "Add to Home Screen".
+
 An **original** program (code written from scratch):
-bots as contacts, each bot with its own provider, model and instructions,
-a local conversation memory, and a permission broker that asks before
+bots as contacts that all share one intelligence — **Krouchi AI**: one
+provider, one key and one model, entered once and used by every bot —
+while each bot keeps its own name, avatar, role instructions and
+approval mode; a local conversation memory, persistent skills and
+memory that the bots learn and keep, and a permission broker that asks before
 executing anything and fails **closed** (no answer = refusal).
 There is no usage telemetry of any kind — your data never leaves your
 machine except to the model provider you choose, with your own key.
@@ -19,6 +39,21 @@ bilingual — Arabic and English, switchable live from the main window
 (see "Interface languages" below). **Version 3.3.0** adds bot tasks,
 full phone control of the PC, and a live screen with touch mouse and
 keyboard (see "Tasks, full control and the live screen" below).
+**Version 3.4.0** reorganizes the app as an administration: phone
+bots are the brain — they understand, plan, delegate tasks to PC bots
+and compile reports — and PC bots are the hands and eyes, with one
+shared Krouchi AI for all bots, bot avatars, a Windows installer and
+start-with-Windows. Later versions teach the PC bots to type in any
+program and read documents (3.4.x) and to see the screen with a
+vision model (3.5.0); **Version 3.6.0** adds learning — persistent
+skills and memory on both sides, installing external skill files on
+the phone and teaching them to the PC, and an attach (+) button so a
+bot can read any file you give it. **Version 3.7.0** lets a bot
+search the provider's models and choose the one that fits its task —
+above all a vision model, so it is never stuck blind — and gives
+phone bots their own eyes (a screenshot of the PC, or the phone
+camera). **Version 3.8.0** gives the desktop a modern interface in
+the same indigo/violet identity as the phone.
 
 ## What Step 1 does
 
@@ -37,6 +72,10 @@ keyboard (see "Tasks, full control and the live screen" below).
 | Bot tasks | `krouchi_dz/tasks.py` | Long-running tasks assigned to a bot: queued / running / waiting-approval / done / failed / cancelled, a capped event log, cooperative cancellation, and tasks left active at shutdown marked failed ("interrupted") at the next start |
 | Phone control surface | `krouchi_dz/control.py` | The PC-side executors behind the companion server's control endpoints: status, files, printing, commands, clipboard, volume, windows, processes and power — every sensitive one gated by the approval broker |
 | Live screen + input | `krouchi_dz/remote.py` | Screen capture as an MJPEG stream and remote mouse/keyboard injection (Windows: GDI capture + SendInput, standard library only); coordinates are normalized so any phone resolution maps to the PC screen |
+| Document reading | `krouchi_dz/documents.py` | One text extractor behind every reader: .docx, .xlsx and text formats in full, PDF best-effort (a scanned PDF reports that it needs OCR) |
+| Skills + memory | `krouchi_dz/db.py` | Skills and memory notes stored in the database and injected into every bot's prompt; bots learn with `save_skill` / `remember` and recall with `use_skill`; the phone teaches skills to the PC over `/api/skills` |
+| Bot avatars | `krouchi_dz/avatars.py` | A built-in gallery of bot portraits, picked per bot and shown in lists and chat headers |
+| Start with Windows | `krouchi_dz/autostart.py` | The Startup-folder shortcut, managed by the installer and by the phone-link dialog |
 
 ### Approval modes (per bot)
 
@@ -61,10 +100,10 @@ Only Python 3.10+ is required (standard library only).
 ```bash
 cd Krouchi_DZ
 python3 -m unittest discover -s tests -t . -v          # GUI tests are skipped without a display
-xvfb-run -a python3 -m unittest discover -s tests -t . # everything: 260 tests
+xvfb-run -a python3 -m unittest discover -s tests -t . # everything: 451 tests
 ```
 
-Expected result: **260 passing tests** covering: database
+Expected result: **451 passing tests** covering: database
 round-trips, loading provider settings while respecting user edits,
 the OpenRouter/Gemini request shapes over a fake transport (no
 network), the chat engine with a mock provider (memory survives a
@@ -88,7 +127,13 @@ cancellation, interruption at startup), the phone control surface
 (every endpoint behind the broker, the PC-side control switch), the
 remote screen/input core (coordinate mapping, input validation,
 MJPEG framing and deduplication), and the screen/input HTTP endpoints
-(token rules, the control gate, viewer counting).
+(token rules, the control gate, viewer counting) — plus document
+extraction (docx/xlsx/PDF fixtures), the skills and memory store
+with its tool loop and broker gating, phone-teaching of skills over
+the API, the screen-vision tool with its graceful text-only
+fallback, and chat attachments (text, documents and images) on the
+desktop, the server and both phone clients (their own Node suites:
+170 Android + 108 PWA checks).
 
 ## Using the engine (example)
 
@@ -334,7 +379,29 @@ packages for Windows, Linux and macOS.
 served by GitHub Pages and by the PC itself, pairing with the PC
 companion server.
 
-**v3.3.0** (this release): bot tasks, full phone control of the PC,
+**v3.3.0**: bot tasks, full phone control of the PC,
 the live screen, Wake-on-LAN, and Tailscale labeling; packages for
 Windows, Android, iPhone (web app), Linux and macOS, with a full
 user guide in Arabic and English.
+
+**v3.4.0**: the Administration — phone bots delegate to PC bots and
+report back; one shared Krouchi AI for all bots; bot avatars; a
+Windows Setup installer with start-with-Windows; a full-screen live
+screen with a full keyboard (Arabic / AZERTY / English).
+
+**v3.6.0**: PC bots type in any program, read documents and the
+clipboard, and see the screen (vision model); bots on both sides
+learn persistent skills and memory; the phone installs external
+skill files and teaches them to the PC; an attach (+) button lets
+any bot read a file you give it. Release assets keep stable names,
+so the Download links above always fetch the latest version
+directly.
+
+**v3.8.0** (this release): a modern desktop interface — an
+indigo/violet theme with bot cards in the sidebar, a conversation
+header, tinted message blocks and restyled dialogs; scrollbars for
+the provider and model lists in the Add-API dialog. Includes
+everything from 3.7.0: bots choose their own model under the
+director's standing delegation (vision first), phone bots take a
+screenshot of the PC or a camera photo, a leaner practical phone
+app, and easy bot renaming.
