@@ -103,7 +103,7 @@
 
 <p align="center">
   <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="تحميل — ويندوز المحمول"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip"><img src="https://img.shields.io/badge/Download-macOS-4f46e5?style=for-the-badge&logo=apple&logoColor=white" alt="تحميل — macOS"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip"><img src="assets/buttons/btn_macos.png" width="270" alt="تحميل — macOS"></a>
 </p>
 
 | المنصة | التحميل المباشر |
