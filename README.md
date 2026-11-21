@@ -87,35 +87,30 @@
   <img src="screenshots/v3.8.0/add_api_dialog.png" width="43%" alt="Add API — any key, any URL">
 </p>
 
-## Download — direct links (always the latest release)
+## Download — request your copy (free, approved by the author)
 
 <p align="center">
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe"><img src="assets/buttons/btn_windows_setup.png" width="270" alt="Download — Windows Installer"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk"><img src="assets/buttons/btn_android.png" width="270" alt="Download — Android APK"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip"><img src="assets/buttons/btn_linux.png" width="270" alt="Download — Linux"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_windows_setup.png" width="270" alt="Download — Windows Installer"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_android.png" width="270" alt="Download — Android APK"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_linux.png" width="270" alt="Download — Linux"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip"><img src="assets/buttons/btn_iphone.png" width="270" alt="Download — iPhone Web App"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md"><img src="assets/buttons/btn_guide_ar.png" width="270" alt="User Guide — Arabic"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md"><img src="assets/buttons/btn_guide_en.png" width="270" alt="User Guide — English"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_iphone.png" width="270" alt="Download — iPhone Web App"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_guide_ar.png" width="270" alt="User Guide — Arabic"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_guide_en.png" width="270" alt="User Guide — English"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="Download — Windows Portable"></a>
-  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip"><img src="assets/buttons/btn_macos.png" width="270" alt="Download — macOS"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="Download — Windows Portable"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_macos.png" width="270" alt="Download — macOS"></a>
 </p>
 
-| Platform | Direct download |
-|---|---|
-| Windows — installer | [Krouchi_DZ_Setup.exe](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe) |
-| Windows — portable zip | [Krouchi_DZ_Windows.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip) |
-| Android | [Krouchi_DZ.apk](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk) |
-| Linux | [Krouchi_DZ_Linux.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip) |
-| macOS | [Krouchi_DZ_macOS.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip) |
-| iPhone — web app package | [Krouchi_DZ_iPhone.zip](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip) |
-| User guide — Arabic | [Krouchi_DZ_User_Guide_AR.md](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md) |
-| User guide — English | [Krouchi_DZ_User_Guide_EN.md](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md) |
+**How downloading works:** Krouchi_DZ is free, and every copy is handed out personally by the author.
+
+1. ⭐ Star this repository.
+2. Open the [download request page](https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/) and send your name, email and GitHub username — any button above takes you there.
+3. If your request is approved, your download link arrives by email (usually within 24–48 hours).
 
 iPhone: the web app is also live at
 [krouchi-abdelrazak.github.io/Krouchi_DZ/pwa](https://krouchi-abdelrazak.github.io/Krouchi_DZ/pwa/)
