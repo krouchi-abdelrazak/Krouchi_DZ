@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Krouchi_DZ — طلب التحميل | Download request</title>
+<title>Krouchi_DZ — طلب التحميل</title>
 <meta name="description" content="Krouchi_DZ — صفحة طلب التحميل: نجمة + استمارة، والرابط يصلك بالإيميل بعد موافقة المؤلف.">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,13 +13,16 @@
     min-height: 100vh; color: #23233c; padding: 24px 14px 40px;
   }
   .wrap { max-width: 760px; margin: 0 auto; }
+  .langbar { text-align: center; color: #c7d2fe; font-size: .95rem; margin-bottom: 16px; }
+  .langbar a { color: #fff; text-decoration: none; }
+  .langbar a:hover { text-decoration: underline; }
+  .langbar strong { color: #fff; }
   header { text-align: center; color: #fff; margin-bottom: 22px; }
   header img.banner {
     width: 100%; max-width: 720px; border-radius: 16px;
     box-shadow: 0 12px 32px rgba(0,0,0,.35); display: block; margin: 0 auto 18px;
   }
   header h1 { font-size: 1.9rem; line-height: 1.3; }
-  header .sub { color: #c7d2fe; font-size: 1rem; margin-top: 4px; }
   header .author { margin-top: 10px; color: #e0e7ff; font-size: .95rem; }
   .card {
     background: #f7f7fc; border-radius: 16px; padding: 22px 22px 20px;
@@ -33,7 +36,6 @@
     font-size: 1.2rem; font-weight: 700;
   }
   .step-head h2 { font-size: 1.25rem; }
-  .step-head .en { color: #6b7280; font-size: .85rem; font-weight: 400; }
   .card p { line-height: 1.8; color: #3f3f55; margin-bottom: 10px; }
   .btn {
     display: inline-block; text-decoration: none; cursor: pointer; border: none;
@@ -44,14 +46,12 @@
   .btn:hover { transform: translateY(-1px); }
   .btn-star { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 6px 16px rgba(245,158,11,.4); }
   form label { display: block; font-weight: 700; margin: 14px 0 6px; }
-  form label .en { color: #6b7280; font-weight: 400; font-size: .85rem; }
   form input[type="text"], form input[type="email"] {
     width: 100%; padding: 12px 14px; border: 2px solid #d6d6e7; border-radius: 10px;
     font-size: 1rem; font-family: inherit; background: #fff; color: #23233c;
   }
   form input:focus { outline: none; border-color: #4f46e5; }
   form .btn { width: 100%; margin-top: 20px; }
-  .note { font-size: .9rem; color: #6b7280; }
   #thanks { display: none; text-align: center; }
   #thanks .big { font-size: 2rem; margin-bottom: 8px; }
   .counters { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-bottom: 8px; }
@@ -77,25 +77,26 @@
 <body>
 <div class="wrap">
 
+  <div class="langbar"><strong>العربية</strong> · <a href="en.html">English</a></div>
+
   <header>
     <img class="banner" src="../assets/banner.png" alt="Krouchi_DZ">
     <h1>Krouchi_DZ — طلب التحميل</h1>
-    <div class="sub">Krouchi_DZ — Download request</div>
-    <div class="author">By Krouchi Abderrazak — تأليف: كروشي عبد الرزاق</div>
+    <div class="author">تأليف: كروشي عبد الرزاق</div>
   </header>
 
   <!-- العدادات -->
   <div class="counters">
     <div class="counter-btn">
-      <div class="lbl">⬇️ التحميلات · Downloads</div>
+      <div class="lbl">⬇️ التحميلات</div>
       <div class="big-num"><span id="dl-count">—</span></div>
     </div>
     <div class="counter-btn">
-      <div class="lbl">👁️ الزوار · Visitors</div>
-      <img src="https://komarev.com/ghpvc/?username=krouchi-abdelrazak&label=Visitors&color=059669&style=for-the-badge" alt="Visitors">
+      <div class="lbl">👁️ الزوار</div>
+      <img src="https://komarev.com/ghpvc/?username=krouchi-abdelrazak&label=Visitors&color=059669&style=for-the-badge" alt="الزوار">
     </div>
   </div>
-  <div class="counters-caption">أرقام حية من GitHub · Live numbers from GitHub</div>
+  <div class="counters-caption">أرقام حية من GitHub</div>
   <script>
     fetch('https://api.github.com/repos/krouchi-abdelrazak/Krouchi_DZ/releases?per_page=100')
       .then(function (r) { return r.json(); })
@@ -113,7 +114,7 @@
   <section class="card">
     <div class="step-head">
       <div class="num">1</div>
-      <h2>⭐ ضع نجمة للمستودع <span class="en">— Star the repository</span></h2>
+      <h2>⭐ ضع نجمة للمستودع</h2>
     </div>
     <p>افتح صفحة المشروع على GitHub واضغط زر <b>Star</b> (النجمة) في أعلى الصفحة، ثم ارجع إلى هنا وأكمل الخطوة الثانية.</p>
     <p><a class="btn btn-star" href="https://github.com/krouchi-abdelrazak/Krouchi_DZ" target="_blank" rel="noopener">⭐ افتح المستودع وضع النجمة</a></p>
@@ -123,7 +124,7 @@
   <section class="card" id="form-card">
     <div class="step-head">
       <div class="num">2</div>
-      <h2>✍️ املأ استمارة الطلب <span class="en">— Fill in the request form</span></h2>
+      <h2>✍️ املأ استمارة الطلب</h2>
     </div>
     <form method="POST" action="https://formsubmit.co/lrakmana@gmail.com">
       <input type="hidden" name="_subject" value="Krouchi_DZ — طلب تحميل جديد">
@@ -131,16 +132,16 @@
       <input type="hidden" name="_captcha" value="true">
       <input type="hidden" name="_next" value="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/?sent=1">
 
-      <label for="f-name">الاسم الكامل <span class="en">/ Full name</span></label>
+      <label for="f-name">الاسم الكامل</label>
       <input type="text" id="f-name" name="name" required autocomplete="name">
 
-      <label for="f-email">البريد الإلكتروني <span class="en">/ Email</span></label>
+      <label for="f-email">البريد الإلكتروني</label>
       <input type="email" id="f-email" name="email" required autocomplete="email">
 
-      <label for="f-github">اسم مستخدم GitHub <span class="en">/ GitHub username</span></label>
+      <label for="f-github">اسم مستخدم GitHub</label>
       <input type="text" id="f-github" name="github" required autocomplete="off">
 
-      <button type="submit" class="btn">أرسل الطلب · Send request</button>
+      <button type="submit" class="btn">أرسل الطلب</button>
     </form>
   </section>
 
@@ -148,23 +149,21 @@
   <section class="card" id="thanks">
     <div class="big">✅</div>
     <h2>شكراً! وصل طلبك إلى المؤلف، وسيصلك الرد على إيميلك.</h2>
-    <p>Thank you! Your request reached the author; the reply will come to your email.</p>
   </section>
 
   <!-- الخطوة 3 -->
   <section class="card">
     <div class="step-head">
       <div class="num">3</div>
-      <h2>✉️ انتظر الرد على إيميلك <span class="en">— Wait for the reply</span></h2>
+      <h2>✉️ انتظر الرد على إيميلك</h2>
     </div>
     <p>يراجع المؤلف كل طلب بنفسه. إذا قُبل طلبك يصلك رابط التحميل عبر الإيميل — امنحه من <b>24 إلى 48 ساعة</b>.</p>
     <p>تنبيه: تأكد أن اسم مستخدم GitHub الذي كتبته في الاستمارة هو نفسه الحساب الذي وضعت به النجمة، لأنه سيُتحقَّق منه.</p>
   </section>
 
   <footer>
-    <div><a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ">← العودة إلى المستودع · Back to the repository</a></div>
+    <div><a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ">← العودة إلى المستودع</a></div>
     <div>البرنامج مجاني — النجمة والاسم هما الثمن الوحيد</div>
-    <div class="note">Free software — a star and your name are the only price.</div>
   </footer>
 
 </div>
