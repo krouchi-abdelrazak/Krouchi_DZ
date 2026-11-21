@@ -1,4 +1,8 @@
 <p align="center">
+  <strong>English</strong> • <a href="README.ar.md">العربية</a>
+</p>
+
+<p align="center">
   <img src="assets/banner.png" alt="Krouchi_DZ — One brain. Many hands. Your personal AI administration." width="100%">
 </p>
 
@@ -85,14 +89,22 @@
 
 ## Download — direct links (always the latest release)
 
-[![Download — Windows Installer](https://img.shields.io/badge/Download-Windows_Installer-4f46e5?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe)
-[![Download — Windows Portable](https://img.shields.io/badge/Download-Windows_Portable-7c3aed?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip)
-[![Download — Android](https://img.shields.io/badge/Download-Android_APK-4f46e5?style=for-the-badge&logo=android&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk)
-[![Download — Linux](https://img.shields.io/badge/Download-Linux-7c3aed?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip)
-[![Download — macOS](https://img.shields.io/badge/Download-macOS-4f46e5?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip)
-[![Download — iPhone](https://img.shields.io/badge/Download-iPhone_Web_App-7c3aed?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip)
-[![User Guide — Arabic](https://img.shields.io/badge/User_Guide-Arabic-6366f1?style=for-the-badge&logo=gitbook&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md)
-[![User Guide — English](https://img.shields.io/badge/User_Guide-English-6366f1?style=for-the-badge&logo=gitbook&logoColor=white)](https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md)
+<p align="center">
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Setup.exe"><img src="assets/buttons/btn_windows_setup.png" width="270" alt="Download — Windows Installer"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ.apk"><img src="assets/buttons/btn_android.png" width="270" alt="Download — Android APK"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Linux.zip"><img src="assets/buttons/btn_linux.png" width="270" alt="Download — Linux"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_iPhone.zip"><img src="assets/buttons/btn_iphone.png" width="270" alt="Download — iPhone Web App"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_AR.md"><img src="assets/buttons/btn_guide_ar.png" width="270" alt="User Guide — Arabic"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_User_Guide_EN.md"><img src="assets/buttons/btn_guide_en.png" width="270" alt="User Guide — English"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_Windows.zip"><img src="https://img.shields.io/badge/Download-Windows_Portable-7c3aed?style=for-the-badge&logo=windows&logoColor=white" alt="Download — Windows Portable"></a>
+  <a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ/releases/latest/download/Krouchi_DZ_macOS.zip"><img src="https://img.shields.io/badge/Download-macOS-4f46e5?style=for-the-badge&logo=apple&logoColor=white" alt="Download — macOS"></a>
+</p>
 
 | Platform | Direct download |
 |---|---|
