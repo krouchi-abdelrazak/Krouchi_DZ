@@ -91,26 +91,26 @@
 ## Download — request your copy (free, approved by the author)
 
 <p align="center">
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_windows_setup.png" width="270" alt="Download — Windows Installer"></a>
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_android.png" width="270" alt="Download — Android APK"></a>
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_linux.png" width="270" alt="Download — Linux"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_windows_setup.png" width="270" alt="Download — Windows Installer"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_android.png" width="270" alt="Download — Android APK"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_linux.png" width="270" alt="Download — Linux"></a>
 </p>
 
 <p align="center">
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_iphone.png" width="270" alt="Download — iPhone Web App"></a>
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_guide_ar.png" width="270" alt="User Guide — Arabic"></a>
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_guide_en.png" width="270" alt="User Guide — English"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_iphone.png" width="270" alt="Download — iPhone Web App"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_guide_ar.png" width="270" alt="User Guide — Arabic"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_guide_en.png" width="270" alt="User Guide — English"></a>
 </p>
 
 <p align="center">
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="Download — Windows Portable"></a>
-  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/"><img src="assets/buttons/btn_macos.png" width="270" alt="Download — macOS"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_windows_portable.png" width="270" alt="Download — Windows Portable"></a>
+  <a href="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html"><img src="assets/buttons/btn_macos.png" width="270" alt="Download — macOS"></a>
 </p>
 
 **How downloading works:** Krouchi_DZ is free, and every copy is handed out personally by the author.
 
 1. ⭐ Star this repository.
-2. Open the [download request page](https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/) and send your name, email and GitHub username — any button above takes you there.
+2. Open the [download request page](https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/en.html) and send your name, email and GitHub username — any button above takes you there.
 3. If your request is approved, your download link arrives by email (usually within 24–48 hours).
 
 iPhone: the web app is also live at
