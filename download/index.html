@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krouchi_DZ — طلب التحميل</title>
+<meta name="description" content="Krouchi_DZ — صفحة طلب التحميل: نجمة + استمارة، والرابط يصلك بالإيميل بعد موافقة المؤلف.">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    background: linear-gradient(160deg, #1e1b4b 0%, #312e81 55%, #4c1d95 100%);
+    min-height: 100vh; color: #23233c; padding: 24px 14px 40px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .langbar { text-align: center; color: #c7d2fe; font-size: .95rem; margin-bottom: 16px; }
+  .langbar a { color: #fff; text-decoration: none; }
+  .langbar a:hover { text-decoration: underline; }
+  .langbar strong { color: #fff; }
+  header { text-align: center; color: #fff; margin-bottom: 22px; }
+  header img.banner {
+    width: 100%; max-width: 720px; border-radius: 16px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.35); display: block; margin: 0 auto 18px;
+  }
+  header h1 { font-size: 1.9rem; line-height: 1.3; }
+  header .author { margin-top: 10px; color: #e0e7ff; font-size: .95rem; }
+  .card {
+    background: #f7f7fc; border-radius: 16px; padding: 22px 22px 20px;
+    margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  .step-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .num {
+    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 700;
+  }
+  .step-head h2 { font-size: 1.25rem; }
+  .card p { line-height: 1.8; color: #3f3f55; margin-bottom: 10px; }
+  .btn {
+    display: inline-block; text-decoration: none; cursor: pointer; border: none;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff;
+    padding: 12px 26px; border-radius: 12px; font-size: 1.05rem; font-weight: 700;
+    box-shadow: 0 6px 16px rgba(79,70,229,.4); transition: transform .1s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-star { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 6px 16px rgba(245,158,11,.4); }
+  form label { display: block; font-weight: 700; margin: 14px 0 6px; }
+  form input[type="text"], form input[type="email"] {
+    width: 100%; padding: 12px 14px; border: 2px solid #d6d6e7; border-radius: 10px;
+    font-size: 1rem; font-family: inherit; background: #fff; color: #23233c;
+  }
+  form input:focus { outline: none; border-color: #4f46e5; }
+  form .btn { width: 100%; margin-top: 20px; }
+  #thanks { display: none; text-align: center; }
+  #thanks .big { font-size: 2rem; margin-bottom: 8px; }
+  .counters { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-bottom: 8px; }
+  .counter-btn {
+    flex: 1 1 220px; max-width: 340px; min-width: 200px; text-align: center;
+    background: linear-gradient(135deg, rgba(79,70,229,.92), rgba(124,58,237,.92));
+    border: 1px solid rgba(255,255,255,.35); border-radius: 16px;
+    padding: 18px 16px; color: #fff;
+    box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+  .counter-btn .lbl { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+  .counter-btn .big-num { font-size: 34px; font-weight: 800; line-height: 1.1; }
+  .counter-btn img { background: #fff; border-radius: 6px; padding: 2px; max-width: 100%; }
+  .counters-caption { text-align: center; color: #c7d2fe; font-size: .85rem; margin-bottom: 16px; }
+  footer { text-align: center; color: #c7d2fe; margin-top: 26px; line-height: 2; }
+  footer a { color: #fff; font-weight: 700; }
+  @media (max-width: 520px) {
+    header h1 { font-size: 1.5rem; }
+    .card { padding: 18px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="langbar"><strong>العربية</strong> · <a href="en.html">English</a></div>
+
+  <header>
+    <img class="banner" src="../assets/banner.png" alt="Krouchi_DZ">
+    <h1>Krouchi_DZ — طلب التحميل</h1>
+    <div class="author">تأليف: كروشي عبد الرزاق</div>
+  </header>
+
+  <!-- العدادات -->
+  <div class="counters">
+    <div class="counter-btn">
+      <div class="lbl">⬇️ التحميلات</div>
+      <div class="big-num"><span id="dl-count">—</span></div>
+    </div>
+    <div class="counter-btn">
+      <div class="lbl">👁️ الزوار</div>
+      <img src="https://komarev.com/ghpvc/?username=krouchi-abdelrazak&label=Visitors&color=059669&style=for-the-badge" alt="الزوار">
+    </div>
+  </div>
+  <div class="counters-caption">أرقام حية من GitHub</div>
+  <script>
+    fetch('https://api.github.com/repos/krouchi-abdelrazak/Krouchi_DZ/releases?per_page=100')
+      .then(function (r) { return r.json(); })
+      .then(function (rels) {
+        var total = 0;
+        rels.forEach(function (rel) {
+          (rel.assets || []).forEach(function (a) { total += a.download_count || 0; });
+        });
+        document.getElementById('dl-count').textContent = total;
+      })
+      .catch(function () { /* عند أي فشل يبقى الرقم — */ });
+  </script>
+
+  <!-- الخطوة 1 -->
+  <section class="card">
+    <div class="step-head">
+      <div class="num">1</div>
+      <h2>⭐ ضع نجمة للمستودع</h2>
+    </div>
+    <p>افتح صفحة المشروع على GitHub واضغط زر <b>Star</b> (النجمة) في أعلى الصفحة، ثم ارجع إلى هنا وأكمل الخطوة الثانية.</p>
+    <p><a class="btn btn-star" href="https://github.com/krouchi-abdelrazak/Krouchi_DZ" target="_blank" rel="noopener">⭐ افتح المستودع وضع النجمة</a></p>
+  </section>
+
+  <!-- الخطوة 2 -->
+  <section class="card" id="form-card">
+    <div class="step-head">
+      <div class="num">2</div>
+      <h2>✍️ املأ استمارة الطلب</h2>
+    </div>
+    <form method="POST" action="https://formsubmit.co/lrakmana@gmail.com">
+      <input type="hidden" name="_subject" value="Krouchi_DZ — طلب تحميل جديد">
+      <input type="hidden" name="_template" value="table">
+      <input type="hidden" name="_captcha" value="true">
+      <input type="hidden" name="_next" value="https://krouchi-abdelrazak.github.io/Krouchi_DZ/download/?sent=1">
+
+      <label for="f-name">الاسم الكامل</label>
+      <input type="text" id="f-name" name="name" required autocomplete="name">
+
+      <label for="f-email">البريد الإلكتروني</label>
+      <input type="email" id="f-email" name="email" required autocomplete="email">
+
+      <label for="f-github">اسم مستخدم GitHub</label>
+      <input type="text" id="f-github" name="github" required autocomplete="off">
+
+      <button type="submit" class="btn">أرسل الطلب</button>
+    </form>
+  </section>
+
+  <!-- رسالة الشكر بعد الإرسال -->
+  <section class="card" id="thanks">
+    <div class="big">✅</div>
+    <h2>شكراً! وصل طلبك إلى المؤلف، وسيصلك الرد على إيميلك.</h2>
+  </section>
+
+  <!-- الخطوة 3 -->
+  <section class="card">
+    <div class="step-head">
+      <div class="num">3</div>
+      <h2>✉️ انتظر الرد على إيميلك</h2>
+    </div>
+    <p>يراجع المؤلف كل طلب بنفسه. إذا قُبل طلبك يصلك رابط التحميل عبر الإيميل — امنحه من <b>24 إلى 48 ساعة</b>.</p>
+    <p>تنبيه: تأكد أن اسم مستخدم GitHub الذي كتبته في الاستمارة هو نفسه الحساب الذي وضعت به النجمة، لأنه سيُتحقَّق منه.</p>
+  </section>
+
+  <footer>
+    <div><a href="https://github.com/krouchi-abdelrazak/Krouchi_DZ">← العودة إلى المستودع</a></div>
+    <div>البرنامج مجاني — النجمة والاسم هما الثمن الوحيد</div>
+  </footer>
+
+</div>
+
+<script>
+  if (new URLSearchParams(window.location.search).get('sent') === '1') {
+    document.getElementById('form-card').style.display = 'none';
+    document.getElementById('thanks').style.display = 'block';
+  }
+</script>
+</body>
+</html>
