@@ -1,0 +1,29 @@
+# Krouchi_DZ — .gitignore
+# الأسرار وبيانات المستخدم: لا تُرفع أبداً
+secrets.json
+**/secrets.json
+*.db
+*.sqlite3
+.krouchi_dz/
+data/
+
+# بايثون
+__pycache__/
+*.pyc
+
+# حزمة ويندوز الجاهزة ووقت تشغيل بايثون المحمول
+Krouchi_DZ_Windows/
+Krouchi_DZ_Windows.zip
+python/
+
+# مخرجات بناء أندرويد ومفتاح التوقيع: لا تُرفع أبداً
+android/build/
+android/*.apk
+android/*.idsig
+*.apk
+*.keystore
+debug.keystore
+
+# سجلات مزامنة GitHub
+*.muse-github-snapshot-sync.json
+*.muse-github-snapshot-sync.json.tmp-*
